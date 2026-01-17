@@ -640,21 +640,20 @@ def get_avg_holding_period_by_stock(trades):
 def get_trade_duration_distribution(trades):
     """
     Get distribution of trade durations for histogram.
-    Returns flat list of days (one entry per quantity unit for proper histogram).
+    Returns list of days (one entry per trade match, not per quantity unit).
     
     Args:
         trades: DataFrame with tradebook data
         
     Returns:
-        list: List of holding periods (days) for histogram
+        list: List of holding periods (days) for histogram - one entry per trade match
     """
     if trades is None or len(trades) == 0:
         return []
     
     periods = match_buy_sell_trades(trades)
-    # Flatten to one entry per quantity unit for histogram
-    distribution = []
-    for days, qty in periods:
-        distribution.extend([days] * int(qty))
+    # Return one entry per trade match (not weighted by quantity)
+    # This gives the distribution of trade durations, not quantity-weighted
+    distribution = [days for days, _ in periods]
     
     return distribution
