@@ -12,6 +12,7 @@ import io
 
 from services.excel_reader import read_tradebook, read_pnl
 from services import metrics_calculator as mc
+from services import sector_mapper
 
 # Page config
 st.set_page_config(
@@ -147,6 +148,50 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 8px 25px rgba(255, 255, 255, 0.3), 
                     0 0 20px rgba(255, 255, 255, 0.2);
+    }
+    
+    /* Selectbox dropdown - Scrollable */
+    [data-baseweb="popover"] {
+        max-height: 400px !important;
+    }
+    
+    [data-baseweb="popover"] > div {
+        max-height: 400px !important;
+        overflow-y: auto !important;
+    }
+    
+    [data-baseweb="select"] ul {
+        max-height: 350px !important;
+        overflow-y: auto !important;
+        scrollbar-width: thin !important;
+    }
+    
+    /* Style selectbox options */
+    [role="option"] {
+        padding: 12px 16px !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
+    }
+    
+    [role="option"]:hover {
+        background-color: rgba(255, 255, 255, 0.2) !important;
+    }
+    
+    /* Scrollbar styling */
+    [data-baseweb="select"] ul::-webkit-scrollbar {
+        width: 8px !important;
+    }
+    
+    [data-baseweb="select"] ul::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.1) !important;
+    }
+    
+    [data-baseweb="select"] ul::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.5) !important;
+        border-radius: 4px !important;
+    }
+    
+    [data-baseweb="select"] ul::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.7) !important;
     }
     
     [data-testid="stSidebar"] .stDownloadButton button:active {
@@ -325,6 +370,45 @@ if show_charges and st.session_state.total_charges > 0:
 # Sidebar - Filters Section
 st.sidebar.header("🔍 Filters")
 
+# Initialize enable_sector_filter
+enable_sector_filter = False
+
+# Optional: Enable Sector Filtering
+if df_tradebook is not None:
+    enable_sector_filter = st.sidebar.checkbox(
+        "🏢 Enable Sector Filter",
+        value=False,
+        help="Fetch sector information from Yahoo Finance (may take a moment)"
+    )
+    
+    if enable_sector_filter:
+        if 'sector_map' not in st.session_state or not st.session_state.get('sectors_fetched', False):
+            with st.spinner("Fetching sector information... This may take a moment."):
+                unique_symbols = df_tradebook['Symbol'].unique()
+                
+                # Show progress
+                progress_bar = st.sidebar.progress(0)
+                status_text = st.sidebar.empty()
+                
+                def update_progress(current, total):
+                    progress = current / total
+                    progress_bar.progress(progress)
+                    status_text.text(f"Fetching sectors: {current}/{total}")
+                
+                sector_map = sector_mapper.get_sectors_for_symbols(unique_symbols, update_progress)
+                st.session_state.sector_map = sector_map
+                st.session_state.sectors_fetched = True
+                
+                # Clear progress indicators
+                progress_bar.empty()
+                status_text.empty()
+                st.sidebar.success(f"✓ Fetched sectors for {len(sector_map)} symbols")
+    else:
+        # Clear sector data if disabled
+        if 'sector_map' in st.session_state:
+            del st.session_state.sector_map
+            st.session_state.sectors_fetched = False
+
 # Date range filter
 if df_tradebook is not None:
     min_date = df_tradebook['Trade Date'].min().date()
@@ -354,50 +438,118 @@ if df_tradebook is not None:
         (df_tradebook['Trade Date'].dt.date <= end_date)
     ].copy()
     
-    # Get symbols from date-filtered tradebook for consistency
-    # This ensures P&L matches the symbols that actually appear in the date range
-    symbols_in_date_range = sorted(filtered_tradebook['Symbol'].unique().tolist())
+    # Get all available symbols for independent filtering
+    all_available_symbols = sorted(df_tradebook['Symbol'].unique().tolist())
     
-    # Get all available symbols for the multiselect
-    available_symbols = sorted(df_tradebook['Symbol'].unique().tolist())
+    # Initialize independent filters
+    selected_sectors = []
+    selected_symbols = []
     
-    # Initialize session state for symbol selection
-    if 'symbol_selection' not in st.session_state:
-        st.session_state.symbol_selection = available_symbols
+    # Sector Filter (independent, optional) - Single Select
+    if enable_sector_filter and 'sector_map' in st.session_state and st.session_state.sector_map:
+        sector_map = st.session_state.sector_map
+        available_sectors = sorted(set(sector_map.values()))
+        available_sectors = [s for s in available_sectors if s != 'Unknown']
+        
+        if available_sectors:
+            # Add "All Sectors" as the first option
+            sector_options = ["All Sectors"] + available_sectors
+            
+            # Initialize selected sector in session state
+            if 'selected_sector' not in st.session_state:
+                st.session_state.selected_sector = "All Sectors"
+            
+            # Get the index for the current selection
+            try:
+                sector_index = sector_options.index(st.session_state.selected_sector)
+            except ValueError:
+                sector_index = 0
+                st.session_state.selected_sector = "All Sectors"
+            
+            selected_sector = st.sidebar.selectbox(
+                "Filter by Sector",
+                options=sector_options,
+                index=sector_index,
+                key="sector_selectbox",
+                help="Select a specific sector to filter (All Sectors = show all)"
+            )
+            
+            # Update session state when selection changes
+            if selected_sector != st.session_state.selected_sector:
+                st.session_state.selected_sector = selected_sector
+            
+            # Convert to list format for filtering logic
+            if selected_sector == "All Sectors":
+                selected_sectors = []
+            else:
+                selected_sectors = [selected_sector]
+        else:
+            selected_sectors = []
+    else:
+        selected_sectors = []
     
-    # Quick action buttons
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        if st.button("✓ All", key="select_all_btn", use_container_width=True, help="Select all symbols"):
-            st.session_state.symbol_selection = available_symbols
-            st.rerun()
-    with col2:
-        if st.button("✗ None", key="clear_all_btn", use_container_width=True, help="Clear all selections"):
-            st.session_state.symbol_selection = []
-            st.rerun()
+    # Symbol Filter (independent) - Single Select
+    # Add "All Stocks" as the first option
+    symbol_options = ["All Stocks"] + all_available_symbols
     
-    # Multiselect with current selection
-    selected_symbols = st.sidebar.multiselect(
+    # Initialize selected symbol in session state
+    if 'selected_symbol' not in st.session_state:
+        st.session_state.selected_symbol = "All Stocks"
+    
+    # Reset button for symbol selection
+    if st.sidebar.button("🔄 Reset", key="reset_symbol_btn", use_container_width=True, help="Reset to show all symbols"):
+        st.session_state.selected_symbol = "All Stocks"
+        st.rerun()
+    
+    # Get the index for the current selection
+    try:
+        current_index = symbol_options.index(st.session_state.selected_symbol)
+    except ValueError:
+        current_index = 0
+        st.session_state.selected_symbol = "All Stocks"
+    
+    selected_symbol = st.sidebar.selectbox(
         "Filter by Symbol",
-        options=available_symbols,
-        default=st.session_state.symbol_selection,
-        help="Select symbols to include in analysis"
+        options=symbol_options,
+        index=current_index,
+        key="symbol_selectbox",
+        help="Select a specific symbol to filter (All Stocks = show all)"
     )
     
-    # Update session state when user manually changes selection
-    if selected_symbols != st.session_state.symbol_selection:
-        st.session_state.symbol_selection = selected_symbols
+    # Update session state when selection changes
+    if selected_symbol != st.session_state.selected_symbol:
+        st.session_state.selected_symbol = selected_symbol
     
-    # Filter by symbols - ensure both datasets are filtered consistently
-    if selected_symbols:
-        # Filter by selected symbols - both datasets filtered by same symbols
-        filtered_tradebook = filtered_tradebook[filtered_tradebook['Symbol'].isin(selected_symbols)]
-        filtered_pnl = df_pnl[df_pnl['Symbol'].isin(selected_symbols)].copy()
+    # Convert to list format for filtering logic
+    if selected_symbol == "All Stocks":
+        selected_symbols = []
     else:
-        # When no symbols selected, show empty datasets to ensure consistency
-        # This prevents mismatch where tradebook is date-filtered but P&L is unfiltered
-        filtered_tradebook = filtered_tradebook.iloc[0:0].copy()
-        filtered_pnl = df_pnl.iloc[0:0].copy()
+        selected_symbols = [selected_symbol]
+    
+    # Apply BOTH filters independently to the date-filtered data
+    # Start with date-filtered data
+    filtered_by_date = filtered_tradebook.copy()
+    filtered_pnl_by_date = df_pnl.copy()
+    
+    # Apply sector filter (if enabled and sector selected)
+    if enable_sector_filter and selected_sectors and 'sector_map' in st.session_state:
+        sector_map = st.session_state.sector_map
+        # selected_sectors is now a list with one sector or empty
+        symbols_in_selected_sectors = [sym for sym in all_available_symbols 
+                                      if sector_map.get(sym, 'Unknown') in selected_sectors]
+        filtered_by_date = filtered_by_date[filtered_by_date['Symbol'].isin(symbols_in_selected_sectors)]
+        filtered_pnl_by_date = filtered_pnl_by_date[filtered_pnl_by_date['Symbol'].isin(symbols_in_selected_sectors)]
+    
+    # Apply symbol filter (if symbols selected)
+    if selected_symbols:
+        # Filter by selected symbols
+        filtered_tradebook = filtered_by_date[filtered_by_date['Symbol'].isin(selected_symbols)]
+        filtered_pnl = filtered_pnl_by_date[filtered_pnl_by_date['Symbol'].isin(selected_symbols)].copy()
+    else:
+        # When no symbols selected (empty/reset state), show ALL stocks
+        # This ensures all stocks are displayed by default
+        filtered_tradebook = filtered_by_date.copy()
+        filtered_pnl = filtered_pnl_by_date.copy()
 else:
     filtered_tradebook = df_tradebook
     filtered_pnl = df_pnl
