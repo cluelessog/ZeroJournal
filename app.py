@@ -50,14 +50,14 @@ def load_data(tradebook_file, pnl_file):
     pnl_file.seek(0)  # Reset file pointer
     
     df_tradebook, error_tb = read_tradebook(tradebook_file)
-    df_pnl, error_pnl = read_pnl(pnl_file)
+    df_pnl, error_pnl, total_charges = read_pnl(pnl_file)
     
     if error_tb:
-        return None, None, error_tb, error_pnl
+        return None, None, error_tb, error_pnl, 0.0
     if error_pnl:
-        return df_tradebook, None, error_tb, error_pnl
+        return df_tradebook, None, error_tb, error_pnl, 0.0
     
-    return df_tradebook, df_pnl, None, None
+    return df_tradebook, df_pnl, None, None, total_charges
 
 
 def format_currency(value):
@@ -109,23 +109,30 @@ if 'tradebook_data' not in st.session_state:
     st.session_state.tradebook_data = None
 if 'pnl_data' not in st.session_state:
     st.session_state.pnl_data = None
+if 'total_charges' not in st.session_state:
+    st.session_state.total_charges = 0.0
+if 'initial_capital' not in st.session_state:
+    st.session_state.initial_capital = 0.0
 
 # Load data when files are uploaded
 if tradebook_file is not None and pnl_file is not None:
     with st.spinner("Loading and parsing Excel files..."):
-        df_tb, df_pnl, error_tb, error_pnl = load_data(tradebook_file, pnl_file)
+        df_tb, df_pnl, error_tb, error_pnl, total_charges = load_data(tradebook_file, pnl_file)
         
         if error_tb or error_pnl:
             st.error(f"Error loading files: {error_tb or error_pnl}")
             st.session_state.tradebook_data = None
             st.session_state.pnl_data = None
+            st.session_state.total_charges = 0.0
         else:
             st.session_state.tradebook_data = df_tb
             st.session_state.pnl_data = df_pnl
+            st.session_state.total_charges = total_charges
             st.sidebar.success("✓ Files loaded successfully!")
 else:
     st.session_state.tradebook_data = None
     st.session_state.pnl_data = None
+    st.session_state.total_charges = 0.0
 
 # Get data from session state
 df_tradebook = st.session_state.tradebook_data
@@ -151,6 +158,27 @@ if df_tradebook is None or df_pnl is None:
     - 💾 Export filtered data to CSV/Excel
     """)
     st.stop()
+
+# Sidebar - Portfolio Settings
+st.sidebar.header("💰 Portfolio Settings")
+
+initial_capital = st.sidebar.number_input(
+    "Initial Capital (₹)",
+    min_value=0.0,
+    value=float(st.session_state.initial_capital) if st.session_state.initial_capital > 0 else 0.0,
+    step=1000.0,
+    help="Enter your starting capital amount"
+)
+st.session_state.initial_capital = initial_capital
+
+show_charges = st.sidebar.checkbox(
+    "Show Total Charges",
+    value=True,
+    help="Display total charges paid"
+)
+
+if show_charges and st.session_state.total_charges > 0:
+    st.sidebar.metric("Total Charges", format_currency(st.session_state.total_charges))
 
 # Sidebar - Filters Section
 st.sidebar.header("🔍 Filters")
@@ -233,6 +261,15 @@ if filtered_tradebook is not None and filtered_pnl is not None:
     if len(daily_pnl) == 0 and has_tradebook_data:
         # Fallback to tradebook-based calculation
         daily_pnl = mc.get_daily_pnl(filtered_tradebook)
+    
+    # Distribute charges pro-rata by daily turnover
+    if len(daily_pnl) > 0 and st.session_state.total_charges > 0:
+        daily_pnl = mc.distribute_charges_pro_rata(
+            daily_pnl, 
+            filtered_tradebook, 
+            st.session_state.total_charges,
+            dp_charges_dict=None  # Can be enhanced to extract DP charge dates
+        )
     
     # Calculate metrics (safely handle empty dataframes)
     if has_pnl_data:
@@ -321,7 +358,7 @@ if filtered_tradebook is not None and filtered_pnl is not None:
     
     # Equity Curve
     if len(daily_pnl) > 0:
-        equity_curve = mc.get_equity_curve(daily_pnl, initial_value=0)
+        equity_curve = mc.get_equity_curve(daily_pnl, initial_value=initial_capital)
         
         fig_equity = px.line(
             equity_curve,

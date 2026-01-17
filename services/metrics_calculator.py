@@ -362,6 +362,127 @@ def get_cumulative_pnl(daily_pnl):
     return cumulative[['Date', 'Cumulative P&L']]
 
 
+def calculate_daily_turnover(trades):
+    """
+    Calculate daily turnover (buy value + sell value per day).
+    
+    Args:
+        trades: DataFrame with tradebook data
+        
+    Returns:
+        DataFrame: Daily turnover with columns ['Date', 'Turnover']
+    """
+    if trades is None or len(trades) == 0:
+        return pd.DataFrame(columns=['Date', 'Turnover'])
+    
+    daily_turnover_dict = {}
+    
+    for _, trade in trades.iterrows():
+        trade_date = pd.to_datetime(trade['Trade Date']).date()
+        quantity = trade['Quantity']
+        price = trade['Price']
+        
+        if pd.isna(trade_date) or pd.isna(quantity) or pd.isna(price):
+            continue
+        
+        turnover = quantity * price
+        
+        if trade_date in daily_turnover_dict:
+            daily_turnover_dict[trade_date] += turnover
+        else:
+            daily_turnover_dict[trade_date] = turnover
+    
+    # Convert to DataFrame
+    daily_turnover_list = [{'Date': pd.to_datetime(date), 'Turnover': turnover} 
+                          for date, turnover in daily_turnover_dict.items()]
+    
+    return pd.DataFrame(daily_turnover_list).sort_values('Date')
+
+
+def distribute_charges_pro_rata(daily_pnl, trades, total_charges, dp_charges_dict=None):
+    """
+    Distribute charges pro-rata by daily turnover.
+    - Brokerage + taxes: allocated proportionally to daily turnover
+    - DP charges: allocated to actual posting dates if provided
+    
+    Args:
+        daily_pnl: DataFrame with daily P&L
+        trades: DataFrame with tradebook data (for turnover calculation)
+        total_charges: Total charges amount (brokerage + taxes)
+        dp_charges_dict: Dict {date: amount} for DP charges on actual dates
+        
+    Returns:
+        DataFrame: Daily P&L with charges subtracted
+    """
+    if daily_pnl is None or len(daily_pnl) == 0:
+        return daily_pnl
+    
+    daily_pnl = daily_pnl.copy()
+    
+    # Calculate daily turnover
+    daily_turnover = calculate_daily_turnover(trades)
+    
+    # Merge turnover with daily P&L
+    daily_pnl = daily_pnl.merge(daily_turnover, on='Date', how='left')
+    daily_pnl['Turnover'] = daily_pnl['Turnover'].fillna(0)
+    
+    # Allocate brokerage + taxes pro-rata by turnover
+    if total_charges > 0:
+        total_turnover = daily_pnl['Turnover'].sum()
+        
+        if total_turnover > 0:
+            # Calculate charge per rupee of turnover
+            charge_rate = total_charges / total_turnover
+            daily_pnl['Charges'] = daily_pnl['Turnover'] * charge_rate
+        else:
+            # If no turnover, distribute evenly (fallback)
+            daily_pnl['Charges'] = total_charges / len(daily_pnl)
+    else:
+        daily_pnl['Charges'] = 0.0
+    
+    # Add DP charges on actual dates if provided
+    if dp_charges_dict:
+        for date, dp_charge in dp_charges_dict.items():
+            date_obj = pd.to_datetime(date).date() if isinstance(date, str) else date
+            mask = daily_pnl['Date'].dt.date == date_obj
+            if mask.any():
+                daily_pnl.loc[mask, 'Charges'] += dp_charge
+    
+    # Subtract total charges from P&L
+    daily_pnl['PnL'] = daily_pnl['PnL'] - daily_pnl['Charges']
+    
+    # Drop turnover and charges columns (keep only Date and PnL)
+    return daily_pnl[['Date', 'PnL']]
+
+
+def distribute_charges_evenly(daily_pnl, total_charges):
+    """
+    Distribute total charges evenly across all trading days (legacy method).
+    Use distribute_charges_pro_rata for more accurate allocation.
+    
+    Args:
+        daily_pnl: DataFrame with daily P&L
+        total_charges: Total charges amount to distribute
+        
+    Returns:
+        DataFrame: Daily P&L with charges subtracted
+    """
+    if daily_pnl is None or len(daily_pnl) == 0:
+        return daily_pnl
+    
+    if total_charges <= 0:
+        return daily_pnl
+    
+    daily_pnl = daily_pnl.copy()
+    num_trading_days = len(daily_pnl)
+    
+    if num_trading_days > 0:
+        daily_charge = total_charges / num_trading_days
+        daily_pnl['PnL'] = daily_pnl['PnL'] - daily_charge
+    
+    return daily_pnl
+
+
 def get_equity_curve(daily_pnl, initial_value=0):
     """
     Calculate equity curve (portfolio value over time).
