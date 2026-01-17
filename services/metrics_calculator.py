@@ -214,38 +214,83 @@ def get_daily_pnl(trades):
 
 def get_daily_pnl_from_pnl_data(pnl_data, trades):
     """
-    Calculate daily P&L by matching P&L data with trade dates.
-    This is more accurate than get_daily_pnl.
+    Calculate daily P&L by matching individual buy and sell trades per day.
+    Uses FIFO matching to calculate actual realized P&L per day.
     
     Args:
-        pnl_data: DataFrame with P&L data
+        pnl_data: DataFrame with P&L data (used for validation but not primary calculation)
         trades: DataFrame with tradebook data
         
     Returns:
         DataFrame: Daily P&L with columns ['Date', 'PnL']
     """
-    if pnl_data is None or len(pnl_data) == 0:
+    if trades is None or len(trades) == 0:
         return pd.DataFrame(columns=['Date', 'PnL'])
-    
-    # Get the last trade date for each symbol to calculate daily P&L
-    symbol_dates = trades.groupby('Symbol')['Trade Date'].max().reset_index()
     
     daily_pnl_dict = {}
     
-    for _, row in pnl_data.iterrows():
-        symbol = row['Symbol']
-        pnl = row['Realized P&L']
+    # Group trades by symbol for FIFO matching
+    for symbol in trades['Symbol'].unique():
+        symbol_trades = trades[trades['Symbol'] == symbol].copy()
         
-        # Get the last trade date for this symbol
-        symbol_date = symbol_dates[symbol_dates['Symbol'] == symbol]['Trade Date'].values
+        # Sort by Trade Date and Order Execution Time for proper FIFO matching
+        if 'Order Execution Time' in symbol_trades.columns:
+            symbol_trades['ExecTime'] = pd.to_datetime(
+                symbol_trades['Order Execution Time'], 
+                errors='coerce'
+            )
+            symbol_trades = symbol_trades.sort_values(
+                ['Trade Date', 'ExecTime', 'Trade ID'],
+                na_position='last'
+            )
+        else:
+            symbol_trades = symbol_trades.sort_values(['Trade Date', 'Trade ID'])
         
-        if len(symbol_date) > 0:
-            date = pd.to_datetime(symbol_date[0]).date()
+        # FIFO matching: track buy positions
+        buy_queue = []  # List of {date, quantity, price}
+        
+        for _, trade in symbol_trades.iterrows():
+            trade_date = pd.to_datetime(trade['Trade Date']).date()
+            quantity = trade['Quantity']
+            price = trade['Price']
             
-            if date in daily_pnl_dict:
-                daily_pnl_dict[date] += pnl
-            else:
-                daily_pnl_dict[date] = pnl
+            if pd.isna(trade_date) or pd.isna(quantity) or pd.isna(price):
+                continue
+            
+            if trade['Trade Type'] == 'buy':
+                # Add to buy queue
+                buy_queue.append({
+                    'date': trade_date,
+                    'quantity': quantity,
+                    'price': price
+                })
+            
+            elif trade['Trade Type'] == 'sell' and len(buy_queue) > 0:
+                # Match sell with buys using FIFO
+                remaining_sell = quantity
+                
+                while remaining_sell > 0 and len(buy_queue) > 0:
+                    buy = buy_queue[0]
+                    
+                    # Calculate P&L for this match
+                    matched_qty = min(buy['quantity'], remaining_sell)
+                    pnl = (price - buy['price']) * matched_qty
+                    
+                    # Attribute P&L to sell date (when P&L is realized)
+                    if trade_date in daily_pnl_dict:
+                        daily_pnl_dict[trade_date] += pnl
+                    else:
+                        daily_pnl_dict[trade_date] = pnl
+                    
+                    # Update quantities
+                    if buy['quantity'] <= remaining_sell:
+                        # Entire buy position consumed
+                        remaining_sell -= buy['quantity']
+                        buy_queue.pop(0)
+                    else:
+                        # Partial buy position consumed
+                        buy['quantity'] -= remaining_sell
+                        remaining_sell = 0
     
     # Convert to DataFrame
     daily_pnl_list = [{'Date': pd.to_datetime(date), 'PnL': pnl} 
