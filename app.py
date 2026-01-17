@@ -704,44 +704,49 @@ if df_tradebook is not None:
     selected_symbols = []
     
     # Sector Filter (independent, optional) - Single Select
-    if enable_sector_filter and 'sector_map' in st.session_state and st.session_state.sector_map:
-        sector_map = st.session_state.sector_map
-        available_sectors = sorted(set(sector_map.values()))
-        available_sectors = [s for s in available_sectors if s != 'Unknown']
-        
-        if available_sectors:
-            # Add "All Sectors" as the first option
-            sector_options = ["All Sectors"] + available_sectors
+    if enable_sector_filter:
+        if 'sector_map' in st.session_state and st.session_state.sector_map:
+            sector_map = st.session_state.sector_map
+            available_sectors = sorted(set(sector_map.values()))
+            available_sectors = [s for s in available_sectors if s != 'Unknown']
             
-            # Initialize selected sector in session state
-            if 'selected_sector' not in st.session_state:
-                st.session_state.selected_sector = "All Sectors"
-            
-            # Get the index for the current selection
-            try:
-                sector_index = sector_options.index(st.session_state.selected_sector)
-            except ValueError:
-                sector_index = 0
-                st.session_state.selected_sector = "All Sectors"
-            
-            selected_sector = st.sidebar.selectbox(
-                "Filter by Sector",
-                options=sector_options,
-                index=sector_index,
-                key="sector_selectbox",
-                help="Select a specific sector to filter (All Sectors = show all)"
-            )
-            
-            # Update session state when selection changes
-            if selected_sector != st.session_state.selected_sector:
-                st.session_state.selected_sector = selected_sector
-            
-            # Convert to list format for filtering logic
-            if selected_sector == "All Sectors":
-                selected_sectors = []
+            if available_sectors:
+                # Add "All Sectors" as the first option
+                sector_options = ["All Sectors"] + available_sectors
+                
+                # Initialize selected sector in session state
+                if 'selected_sector' not in st.session_state:
+                    st.session_state.selected_sector = "All Sectors"
+                
+                # Get the index for the current selection
+                try:
+                    sector_index = sector_options.index(st.session_state.selected_sector)
+                except ValueError:
+                    sector_index = 0
+                    st.session_state.selected_sector = "All Sectors"
+                
+                selected_sector = st.sidebar.selectbox(
+                    "Filter by Sector",
+                    options=sector_options,
+                    index=sector_index,
+                    key="sector_selectbox",
+                    help="Select a specific sector to filter (All Sectors = show all)"
+                )
+                
+                # Update session state when selection changes
+                if selected_sector != st.session_state.selected_sector:
+                    st.session_state.selected_sector = selected_sector
+                
+                # Convert to list format for filtering logic
+                if selected_sector == "All Sectors":
+                    selected_sectors = []
+                else:
+                    selected_sectors = [selected_sector]
             else:
-                selected_sectors = [selected_sector]
+                st.sidebar.warning("⚠️ No sectors found. All symbols marked as 'Unknown'.")
+                selected_sectors = []
         else:
+            st.sidebar.info("ℹ️ Enable sector filter to fetch sector data.")
             selected_sectors = []
     else:
         selected_sectors = []
