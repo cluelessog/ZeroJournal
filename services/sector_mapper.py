@@ -50,7 +50,8 @@ def get_stock_sector(symbol):
 
 def get_sectors_for_symbols(symbols, progress_callback=None):
     """
-    Fetch sector information for multiple symbols.
+    Fetch sector information for multiple symbols using parallel processing.
+    Falls back to sequential processing if parallel processing fails.
     
     Args:
         symbols: List of stock symbols
@@ -59,17 +60,61 @@ def get_sectors_for_symbols(symbols, progress_callback=None):
     Returns:
         dict: Dictionary mapping symbol to sector
     """
-    sector_map = {}
-    total = len(symbols)
-    
-    for i, symbol in enumerate(symbols):
-        sector = get_stock_sector(symbol)
-        sector_map[symbol] = sector
+    try:
+        # Try parallel processing first
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import threading
         
-        if progress_callback:
-            progress_callback(i + 1, total)
-    
-    return sector_map
+        sector_map = {}
+        total = len(symbols)
+        completed = 0
+        lock = threading.Lock()
+        
+        def fetch_with_progress(symbol):
+            """Fetch sector and update progress"""
+            sector = get_stock_sector(symbol)
+            return (symbol, sector)
+        
+        # Use parallel processing with max 10 workers
+        max_workers = min(10, len(symbols))
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_symbol = {executor.submit(fetch_with_progress, symbol): symbol for symbol in symbols}
+            
+            # Process completed tasks
+            for future in as_completed(future_to_symbol):
+                try:
+                    symbol, sector = future.result()
+                    sector_map[symbol] = sector
+                except Exception as e:
+                    # If individual fetch fails, mark as Unknown
+                    symbol = future_to_symbol.get(future, 'UNKNOWN')
+                    sector_map[symbol] = 'Unknown'
+                    print(f"Error fetching sector for {symbol}: {str(e)}")
+                
+                # Update progress with thread safety
+                with lock:
+                    completed += 1
+                    if progress_callback:
+                        progress_callback(completed, total)
+        
+        return sector_map
+        
+    except Exception as e:
+        # Fallback to sequential processing if parallel fails
+        print(f"Parallel processing failed, falling back to sequential: {str(e)}")
+        sector_map = {}
+        total = len(symbols)
+        
+        for i, symbol in enumerate(symbols):
+            sector = get_stock_sector(symbol)
+            sector_map[symbol] = sector
+            
+            if progress_callback:
+                progress_callback(i + 1, total)
+        
+        return sector_map
 
 
 def add_sector_to_dataframe(df, symbol_column='Symbol'):

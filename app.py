@@ -636,26 +636,31 @@ if df_tradebook is not None:
     
     if enable_sector_filter:
         if 'sector_map' not in st.session_state or not st.session_state.get('sectors_fetched', False):
-            with st.spinner("Fetching sector information... This may take a moment."):
-                unique_symbols = df_tradebook['Symbol'].unique()
-                
-                # Show progress
-                progress_bar = st.sidebar.progress(0)
-                status_text = st.sidebar.empty()
-                
-                def update_progress(current, total):
-                    progress = current / total
-                    progress_bar.progress(progress)
-                    status_text.markdown(f'<p style="color: white; font-weight: 500;">Fetching sectors: {current}/{total}</p>', unsafe_allow_html=True)
-                
-                sector_map = sector_mapper.get_sectors_for_symbols(unique_symbols, update_progress)
-                st.session_state.sector_map = sector_map
-                st.session_state.sectors_fetched = True
-                
-                # Clear progress indicators
-                progress_bar.empty()
-                status_text.empty()
-                st.sidebar.success(f"✓ Fetched sectors for {len(sector_map)} symbols")
+            try:
+                with st.spinner("Fetching sector information... This may take a moment."):
+                    unique_symbols = df_tradebook['Symbol'].unique()
+                    
+                    # Show progress
+                    progress_bar = st.sidebar.progress(0)
+                    status_text = st.sidebar.empty()
+                    
+                    def update_progress(current, total):
+                        progress = current / total
+                        progress_bar.progress(progress)
+                        status_text.markdown(f'<p style="color: white; font-weight: 500;">Fetching sectors: {current}/{total}</p>', unsafe_allow_html=True)
+                    
+                    sector_map = sector_mapper.get_sectors_for_symbols(unique_symbols, update_progress)
+                    st.session_state.sector_map = sector_map
+                    st.session_state.sectors_fetched = True
+                    
+                    # Clear progress indicators
+                    progress_bar.empty()
+                    status_text.empty()
+                    st.sidebar.success(f"✓ Fetched sectors for {len(sector_map)} symbols")
+            except Exception as e:
+                st.sidebar.error(f"⚠️ Error fetching sectors: {str(e)}")
+                st.session_state.sector_map = {}
+                st.session_state.sectors_fetched = False
     else:
         # Clear sector data if disabled
         if 'sector_map' in st.session_state:
