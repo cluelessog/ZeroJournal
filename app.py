@@ -124,6 +124,35 @@ st.markdown("""
         box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
     }
     
+    /* Download buttons in sidebar - Neon style */
+    [data-testid="stSidebar"] .stDownloadButton button {
+        background: rgba(255, 255, 255, 0.15) !important;
+        color: white !important;
+        border: 2px solid rgba(255, 255, 255, 0.8);
+        border-radius: 12px;
+        padding: 0.7rem 1.5rem;
+        font-weight: 700;
+        font-size: 0.95rem;
+        transition: all 0.3s;
+        width: 100%;
+        margin: 0.5rem 0;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    }
+    
+    [data-testid="stSidebar"] .stDownloadButton button:hover {
+        background: rgba(255, 255, 255, 0.25) !important;
+        border-color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(255, 255, 255, 0.3), 
+                    0 0 20px rgba(255, 255, 255, 0.2);
+    }
+    
+    [data-testid="stSidebar"] .stDownloadButton button:active {
+        transform: translateY(0);
+    }
+    
     /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
@@ -332,12 +361,32 @@ if df_tradebook is not None:
     # Get all available symbols for the multiselect
     available_symbols = sorted(df_tradebook['Symbol'].unique().tolist())
     
+    # Initialize session state for symbol selection
+    if 'symbol_selection' not in st.session_state:
+        st.session_state.symbol_selection = available_symbols
+    
+    # Quick action buttons
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        if st.button("✓ All", key="select_all_btn", use_container_width=True, help="Select all symbols"):
+            st.session_state.symbol_selection = available_symbols
+            st.rerun()
+    with col2:
+        if st.button("✗ None", key="clear_all_btn", use_container_width=True, help="Clear all selections"):
+            st.session_state.symbol_selection = []
+            st.rerun()
+    
+    # Multiselect with current selection
     selected_symbols = st.sidebar.multiselect(
         "Filter by Symbol",
         options=available_symbols,
-        default=available_symbols,
+        default=st.session_state.symbol_selection,
         help="Select symbols to include in analysis"
     )
+    
+    # Update session state when user manually changes selection
+    if selected_symbols != st.session_state.symbol_selection:
+        st.session_state.symbol_selection = selected_symbols
     
     # Filter by symbols - ensure both datasets are filtered consistently
     if selected_symbols:
