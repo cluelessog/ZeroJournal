@@ -10,6 +10,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import io
+from streamlit_elements import elements, mui, html
 
 from services.excel_reader import read_tradebook, read_pnl
 from services import metrics_calculator as mc
@@ -23,132 +24,284 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Modern Custom CSS
+# Material Design Advanced CSS
 st.markdown("""
 <style>
-    /* Import Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    /* Import Roboto Font - Material Design Standard */
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&family=Roboto+Mono:wght@400;500;600&display=swap');
     
-    /* Main container styling */
+    /* Root Variables - Material Design Color Palette */
+    :root {
+        --md-primary: #1976d2;
+        --md-primary-dark: #1565c0;
+        --md-primary-light: #42a5f5;
+        --md-secondary: #dc004e;
+        --md-success: #4caf50;
+        --md-warning: #ff9800;
+        --md-error: #f44336;
+        --md-info: #2196f3;
+        --md-surface: #ffffff;
+        --md-background: #f5f5f5;
+        --md-text-primary: #212121;
+        --md-text-secondary: #757575;
+        --md-divider: #e0e0e0;
+    }
+    
+    /* Main container styling - Material Design Elevation */
     .main {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #1976d2 0%, #1565c0 50%, #0d47a1 100%);
         background-attachment: fixed;
     }
     
-    /* Content area */
+    /* Content area - Material Design Card */
     .block-container {
-        padding: 2rem 3rem;
-        background: rgba(255, 255, 255, 0.95);
-        border-radius: 20px;
-        margin: 2rem auto;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+        padding: 2rem 2.5rem;
+        background: var(--md-surface);
+        border-radius: 16px;
+        margin: 1.5rem auto;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
     }
     
-    /* Headers */
+    /* Headers - Material Design Typography */
     h1, h2, h3 {
-        font-family: 'Inter', sans-serif;
-        font-weight: 700;
-        color: #1a202c;
+        font-family: 'Roboto', sans-serif;
+        font-weight: 500;
+        letter-spacing: 0.015em;
+        color: var(--md-text-primary);
     }
     
     h1 {
         font-size: 2.5rem;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        font-weight: 700;
+        color: #1976d2;
         margin-bottom: 2rem;
+        line-height: 1.2;
     }
     
     h2 {
-        font-size: 1.8rem;
-        color: #2d3748;
-        border-bottom: 3px solid #667eea;
-        padding-bottom: 0.5rem;
-        margin-top: 2rem;
+        font-size: 1.75rem;
+        font-weight: 600;
+        color: var(--md-text-primary);
+        margin-top: 2.5rem;
         margin-bottom: 1.5rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid var(--md-divider);
     }
     
     h3 {
-        font-size: 1.3rem;
-        color: #4a5568;
+        font-size: 1.25rem;
+        font-weight: 500;
+        color: var(--md-text-secondary);
+        margin-top: 1rem;
     }
     
-    /* Metrics styling */
+    /* Material Design Elevation - Metrics Container */
+    [data-testid="stMetric"] {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+        border-left: 4px solid var(--md-primary);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    [data-testid="stMetric"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+    
+    /* Metrics styling - Material Design */
     [data-testid="stMetricValue"] {
         font-size: 2rem;
         font-weight: 700;
-        color: #667eea;
+        color: var(--md-primary);
+        font-family: 'Roboto', sans-serif;
     }
     
     [data-testid="stMetricLabel"] {
-        font-size: 0.9rem;
-        font-weight: 600;
-        color: #4a5568;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--md-text-secondary);
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.1em;
+        font-family: 'Roboto', sans-serif;
     }
     
-    /* Info/Warning/Success boxes */
+    /* Metric delta styling */
+    [data-testid="stMetricDelta"] {
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+    
+    [data-testid="stMetricDelta"] svg {
+        display: inline;
+    }
+    
+    /* Material Design Alerts */
     .stAlert {
-        border-radius: 12px;
+        border-radius: 8px;
         border: none;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        font-family: 'Inter', sans-serif;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        font-family: 'Roboto', sans-serif;
+        font-weight: 400;
+        padding: 1rem 1.25rem;
     }
     
-    /* Sidebar styling */
+    /* Success alert - Material Green */
+    .stSuccess {
+        background-color: #e8f5e9 !important;
+        color: #1b5e20 !important;
+        border-left: 4px solid var(--md-success) !important;
+    }
+    
+    /* Info alert - Material Blue */
+    .stInfo {
+        background-color: #e3f2fd !important;
+        color: #0d47a1 !important;
+        border-left: 4px solid var(--md-info) !important;
+    }
+    
+    /* Warning alert - Material Orange */
+    .stWarning {
+        background-color: #fff3e0 !important;
+        color: #e65100 !important;
+        border-left: 4px solid var(--md-warning) !important;
+    }
+    
+    /* Error alert - Material Red */
+    .stError {
+        background-color: #ffebee !important;
+        color: #b71c1c !important;
+        border-left: 4px solid var(--md-error) !important;
+    }
+    
+    /* Material Design Sidebar */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(180deg, #1976d2 0%, #1565c0 50%, #0d47a1 100%);
     }
     
     [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
         color: white;
     }
     
-    [data-testid="stSidebar"] label {
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
         color: white !important;
-        font-weight: 600;
     }
     
-    /* Buttons */
+    [data-testid="stSidebar"] label {
+        color: white !important;
+        font-weight: 500;
+        font-family: 'Roboto', sans-serif;
+        font-size: 0.875rem;
+        letter-spacing: 0.05em;
+    }
+    
+    [data-testid="stSidebar"] h1, 
+    [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] h4 {
+        color: white !important;
+    }
+    
+    [data-testid="stSidebar"] .stMarkdown {
+        color: white !important;
+    }
+    
+    /* Sidebar input fields - Dark text on white background */
+    [data-testid="stSidebar"] input {
+        background: rgba(255, 255, 255, 0.95) !important;
+        color: #212121 !important;
+        border: 1px solid rgba(255, 255, 255, 0.5) !important;
+        font-weight: 500 !important;
+    }
+    
+    [data-testid="stSidebar"] input::placeholder {
+        color: rgba(0, 0, 0, 0.5) !important;
+    }
+    
+    /* Date input text visibility */
+    [data-testid="stSidebar"] [data-baseweb="input"] input {
+        color: #212121 !important;
+    }
+    
+    /* Sidebar checkbox text - Fix white on white */
+    [data-testid="stSidebar"] .stCheckbox label {
+        color: white !important;
+    }
+    
+    [data-testid="stSidebar"] .stCheckbox p {
+        color: white !important;
+    }
+    
+    /* Sidebar number input label - Fix white on white */
+    [data-testid="stSidebar"] [data-testid="stNumberInput"] label {
+        color: white !important;
+    }
+    
+    [data-testid="stSidebar"] [data-testid="stNumberInput"] p {
+        color: white !important;
+    }
+    
+    /* Sidebar metric labels and values - Fix visibility */
+    [data-testid="stSidebar"] [data-testid="stMetric"] {
+        background: rgba(255, 255, 255, 0.15) !important;
+        padding: 1rem !important;
+        border-radius: 8px !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    }
+    
+    [data-testid="stSidebar"] [data-testid="stMetricLabel"] {
+        color: white !important;
+        font-weight: 500 !important;
+    }
+    
+    [data-testid="stSidebar"] [data-testid="stMetricValue"] {
+        color: white !important;
+        font-size: 1.5rem !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Material Design Buttons */
     .stButton button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: var(--md-primary);
         color: white;
         border: none;
-        border-radius: 8px;
-        padding: 0.5rem 2rem;
-        font-weight: 600;
-        transition: transform 0.2s;
+        border-radius: 4px;
+        padding: 0.5rem 1.5rem;
+        font-weight: 500;
+        font-family: 'Roboto', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        transition: background-color 0.2s ease, box-shadow 0.2s ease;
     }
     
     .stButton button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        background: var(--md-primary-dark);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     }
     
-    /* Download buttons in sidebar - Neon style */
+    /* Material Design Download buttons */
     [data-testid="stSidebar"] .stDownloadButton button {
-        background: rgba(255, 255, 255, 0.15) !important;
+        background: rgba(255, 255, 255, 0.12) !important;
         color: white !important;
-        border: 2px solid rgba(255, 255, 255, 0.8);
-        border-radius: 12px;
-        padding: 0.7rem 1.5rem;
-        font-weight: 700;
-        font-size: 0.95rem;
-        transition: all 0.3s;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 4px;
+        padding: 0.625rem 1rem;
+        font-weight: 500;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
         width: 100%;
         margin: 0.5rem 0;
-        backdrop-filter: blur(10px);
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        transition: background-color 0.2s ease, box-shadow 0.2s ease;
+        font-family: 'Roboto', sans-serif;
     }
     
     [data-testid="stSidebar"] .stDownloadButton button:hover {
-        background: rgba(255, 255, 255, 0.25) !important;
-        border-color: white;
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(255, 255, 255, 0.3), 
-                    0 0 20px rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.2) !important;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     }
     
     /* Selectbox dropdown - Scrollable */
@@ -199,21 +352,120 @@ st.markdown("""
         transform: translateY(0);
     }
     
-    /* Tabs */
+    /* Material Design Tabs */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
+        gap: 0;
+        padding: 0;
+        border-bottom: 1px solid var(--md-divider);
     }
     
     .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        padding: 0.5rem 1.5rem;
-        background-color: #f7fafc;
-        font-weight: 600;
+        border-radius: 0;
+        padding: 1rem 2rem;
+        background-color: transparent;
+        font-weight: 500;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-family: 'Roboto', sans-serif;
+        color: var(--md-text-secondary);
+        border-bottom: 2px solid transparent;
+        transition: color 0.2s ease, border-color 0.2s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        color: var(--md-primary);
+        background-color: rgba(25, 118, 210, 0.04);
     }
     
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+        color: var(--md-primary);
+        border-bottom: 2px solid var(--md-primary);
+        background-color: transparent;
+    }
+    
+    /* Material Design Dataframe */
+    .dataframe {
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        border: 1px solid var(--md-divider);
+        font-family: 'Roboto', sans-serif;
+    }
+    
+    .dataframe thead th {
+        background-color: #f5f5f5 !important;
+        color: var(--md-text-primary) !important;
+        font-weight: 500 !important;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+    }
+    
+    .dataframe tbody tr:hover {
+        background-color: rgba(25, 118, 210, 0.04) !important;
+    }
+    
+    /* Material Design Plotly charts */
+    .js-plotly-plot {
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+        border: 1px solid var(--md-divider);
+    }
+    
+    /* Material Design File uploader */
+    [data-testid="stFileUploader"] {
+        border-radius: 4px;
+        border: 2px dashed rgba(255, 255, 255, 0.4);
+        padding: 1rem;
+        background: rgba(255, 255, 255, 0.08);
+        transition: border-color 0.2s ease, background-color 0.2s ease;
+    }
+    
+    [data-testid="stFileUploader"]:hover {
+        border-color: rgba(255, 255, 255, 0.7);
+        background: rgba(255, 255, 255, 0.12);
+    }
+    
+    /* Material Design Expander */
+    .streamlit-expanderHeader {
+        border-radius: 4px;
+        font-weight: 500;
+        font-family: 'Roboto', sans-serif;
+        background-color: rgba(255, 255, 255, 0.08);
+        transition: background-color 0.2s ease;
+    }
+    
+    .streamlit-expanderHeader:hover {
+        background-color: rgba(255, 255, 255, 0.15);
+    }
+    
+    /* Material Design Number input */
+    [data-testid="stNumberInput"] input {
+        border-radius: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        font-weight: 500;
+        font-family: 'Roboto Mono', monospace;
+        background: rgba(255, 255, 255, 0.95);
+        color: #212121;
+    }
+    
+    [data-testid="stNumberInput"] input:focus {
+        border-color: rgba(255, 255, 255, 1);
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
+    }
+    
+    /* Sidebar number input - Dark text */
+    [data-testid="stSidebar"] [data-testid="stNumberInput"] input {
+        background: rgba(255, 255, 255, 0.95) !important;
+        color: #212121 !important;
+    }
+    
+    /* Selectbox - Material Design */
+    [data-testid="stSelectbox"] label {
+        font-weight: 500;
+        font-size: 0.875rem;
     }
     
     /* Hide Streamlit branding */
@@ -394,7 +646,7 @@ if df_tradebook is not None:
                 def update_progress(current, total):
                     progress = current / total
                     progress_bar.progress(progress)
-                    status_text.text(f"Fetching sectors: {current}/{total}")
+                    status_text.markdown(f'<p style="color: white; font-weight: 500;">Fetching sectors: {current}/{total}</p>', unsafe_allow_html=True)
                 
                 sector_map = sector_mapper.get_sectors_for_symbols(unique_symbols, update_progress)
                 st.session_state.sector_map = sector_map
@@ -650,23 +902,39 @@ if filtered_tradebook is not None and filtered_pnl is not None:
         st.warning("⚠️ No data available for the selected filters. Please adjust your date range or symbol filters.")
         st.stop()
     
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
-    with col1:
-        st.metric("Win Rate", f"{win_rate:.2f}%", delta=None)
-    
-    with col2:
-        pf_display = f"{profit_factor:.2f}" if profit_factor != float('inf') else "∞"
-        st.metric("Profit Factor", pf_display, delta=None)
-    
-    with col3:
-        st.metric("Avg Holding Period", f"{avg_holding_period:.1f} days", delta=None)
-    
-    with col4:
-        st.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}", delta=None)
-    
-    with col5:
-        st.metric("Max Drawdown", format_currency(max_drawdown), delta=None)
+    # Material-UI Grid Layout for Performance Metrics
+    with elements("performance_metrics"):
+        with mui.Grid(container=True, spacing=2):
+            # Win Rate
+            with mui.Grid(item=True, xs=12, sm=6, md=2.4):
+                with mui.Paper(elevation=2, sx={"p": 2.5, "borderLeft": "4px solid #4caf50", "borderRadius": "8px", "height": "100%"}):
+                    mui.Typography("Win Rate", variant="caption", sx={"color": "#757575", "textTransform": "uppercase", "letterSpacing": "0.1em", "fontWeight": 500, "fontSize": "0.75rem"})
+                    mui.Typography(f"{win_rate:.2f}%", variant="h4", sx={"fontWeight": 700, "color": "#4caf50", "mt": 1, "fontSize": "1.75rem"})
+            
+            # Profit Factor
+            with mui.Grid(item=True, xs=12, sm=6, md=2.4):
+                pf_display = f"{profit_factor:.2f}" if profit_factor != float('inf') else "∞"
+                with mui.Paper(elevation=2, sx={"p": 2.5, "borderLeft": "4px solid #2196f3", "borderRadius": "8px", "height": "100%"}):
+                    mui.Typography("Profit Factor", variant="caption", sx={"color": "#757575", "textTransform": "uppercase", "letterSpacing": "0.1em", "fontWeight": 500, "fontSize": "0.75rem"})
+                    mui.Typography(pf_display, variant="h4", sx={"fontWeight": 700, "color": "#2196f3", "mt": 1, "fontSize": "1.75rem"})
+            
+            # Avg Holding Period
+            with mui.Grid(item=True, xs=12, sm=6, md=2.4):
+                with mui.Paper(elevation=2, sx={"p": 2.5, "borderLeft": "4px solid #ff9800", "borderRadius": "8px", "height": "100%"}):
+                    mui.Typography("Avg Holding", variant="caption", sx={"color": "#757575", "textTransform": "uppercase", "letterSpacing": "0.1em", "fontWeight": 500, "fontSize": "0.75rem"})
+                    mui.Typography(f"{avg_holding_period:.1f}d", variant="h4", sx={"fontWeight": 700, "color": "#ff9800", "mt": 1, "fontSize": "1.75rem"})
+            
+            # Sharpe Ratio
+            with mui.Grid(item=True, xs=12, sm=6, md=2.4):
+                with mui.Paper(elevation=2, sx={"p": 2.5, "borderLeft": "4px solid #9c27b0", "borderRadius": "8px", "height": "100%"}):
+                    mui.Typography("Sharpe Ratio", variant="caption", sx={"color": "#757575", "textTransform": "uppercase", "letterSpacing": "0.1em", "fontWeight": 500, "fontSize": "0.75rem"})
+                    mui.Typography(f"{sharpe_ratio:.2f}", variant="h4", sx={"fontWeight": 700, "color": "#9c27b0", "mt": 1, "fontSize": "1.75rem"})
+            
+            # Max Drawdown
+            with mui.Grid(item=True, xs=12, sm=6, md=2.4):
+                with mui.Paper(elevation=2, sx={"p": 2.5, "borderLeft": "4px solid #f44336", "borderRadius": "8px", "height": "100%"}):
+                    mui.Typography("Max Drawdown", variant="caption", sx={"color": "#757575", "textTransform": "uppercase", "letterSpacing": "0.1em", "fontWeight": 500, "fontSize": "0.75rem"})
+                    mui.Typography(format_currency(max_drawdown), variant="h4", sx={"fontWeight": 700, "color": "#f44336", "mt": 1, "fontSize": "1.5rem"})
     
     # Trading Style Recommendations at the top
     if len(filtered_tradebook) > 0:
@@ -805,16 +1073,20 @@ if filtered_tradebook is not None and filtered_pnl is not None:
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Win Rate by Symbol")
+        st.subheader("Win Rate by Symbol (20 Worst)")
         win_rate_by_symbol = mc.get_win_rate_by_symbol(filtered_pnl, filtered_tradebook)
         if len(win_rate_by_symbol) > 0:
+            # Get top 20 stocks with worst win rate
+            worst_performers = win_rate_by_symbol.nsmallest(20, 'Win Rate %')
             fig_win_rate = px.bar(
-                win_rate_by_symbol.head(20),
+                worst_performers,
                 x='Win Rate %',
                 y='Symbol',
                 orientation='h',
-                title='Win Rate by Symbol (Top 20)',
-                labels={'Win Rate %': 'Win Rate (%)', 'Symbol': 'Symbol'}
+                title='Top 20 Stocks with Worst Win Rate',
+                labels={'Win Rate %': 'Win Rate (%)', 'Symbol': 'Symbol'},
+                color='Win Rate %',
+                color_continuous_scale=['#f44336', '#ff9800', '#ffc107']
             )
             fig_win_rate.update_layout(height=600, xaxis_title="Win Rate (%)", yaxis_title="Symbol")
             st.plotly_chart(fig_win_rate, use_container_width=True)
