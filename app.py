@@ -21,22 +21,130 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
+# Modern Custom CSS
 st.markdown("""
-    <style>
-    .main-header {
+<style>
+    /* Import Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    /* Main container styling */
+    .main {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background-attachment: fixed;
+    }
+    
+    /* Content area */
+    .block-container {
+        padding: 2rem 3rem;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        margin: 2rem auto;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+    }
+    
+    /* Headers */
+    h1, h2, h3 {
+        font-family: 'Inter', sans-serif;
+        font-weight: 700;
+        color: #1a202c;
+    }
+    
+    h1 {
         font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-        margin-bottom: 1rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 2rem;
     }
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
+    
+    h2 {
+        font-size: 1.8rem;
+        color: #2d3748;
+        border-bottom: 3px solid #667eea;
+        padding-bottom: 0.5rem;
+        margin-top: 2rem;
+        margin-bottom: 1.5rem;
     }
-    </style>
+    
+    h3 {
+        font-size: 1.3rem;
+        color: #4a5568;
+    }
+    
+    /* Metrics styling */
+    [data-testid="stMetricValue"] {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #667eea;
+    }
+    
+    [data-testid="stMetricLabel"] {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #4a5568;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Info/Warning/Success boxes */
+    .stAlert {
+        border-radius: 12px;
+        border: none;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+        color: white;
+    }
+    
+    [data-testid="stSidebar"] label {
+        color: white !important;
+        font-weight: 600;
+    }
+    
+    /* Buttons */
+    .stButton button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 2rem;
+        font-weight: 600;
+        transition: transform 0.2s;
+    }
+    
+    .stButton button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+    
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px;
+        padding: 0.5rem 1.5rem;
+        background-color: #f7fafc;
+        font-weight: 600;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+</style>
 """, unsafe_allow_html=True)
 
 
@@ -74,8 +182,13 @@ def format_percentage(value):
     return f"{value:.2f}%"
 
 
-# Main Header
-st.markdown('<h1 class="main-header">📈 ZeroJournal - Trading Dashboard</h1>', unsafe_allow_html=True)
+# Main Header with modern styling
+st.markdown("""
+<div style="text-align: center; padding: 1rem 0 2rem 0;">
+    <h1 style="font-size: 3rem; margin-bottom: 0.5rem;">📈 ZeroJournal</h1>
+    <p style="font-size: 1.2rem; color: #718096; font-weight: 500;">Advanced Trading Analytics Dashboard</p>
+</div>
+""", unsafe_allow_html=True)
 
 # Sidebar - File Upload Section
 st.sidebar.header("📁 File Upload")
