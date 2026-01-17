@@ -10,8 +10,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import io
-from streamlit_option_menu import option_menu
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 from services.excel_reader import read_tradebook, read_pnl
 from services import metrics_calculator as mc
@@ -221,77 +219,6 @@ st.markdown("""
     /* Hide Streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
-    /* Loading Animation */
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-    }
-    
-    .loading-pulse {
-        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-    
-    /* Enhanced Metric Cards */
-    .metric-card {
-        background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
-        backdrop-filter: blur(10px);
-        border-radius: 16px;
-        padding: 1.5rem;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    
-    .metric-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 12px 40px rgba(102, 126, 234, 0.3);
-    }
-    
-    .metric-icon {
-        font-size: 2rem;
-        margin-bottom: 0.5rem;
-    }
-    
-    .metric-value {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #667eea;
-        margin: 0.5rem 0;
-    }
-    
-    .metric-label {
-        font-size: 0.9rem;
-        color: #718096;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        font-weight: 600;
-    }
-    
-    /* Spinner/Loader */
-    .spinner {
-        border: 4px solid rgba(255, 255, 255, 0.3);
-        border-radius: 50%;
-        border-top: 4px solid #667eea;
-        width: 40px;
-        height: 40px;
-        animation: spin 1s linear infinite;
-        margin: 2rem auto;
-    }
-    
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-    
-    /* AG Grid Custom Styling */
-    .ag-theme-streamlit {
-        --ag-background-color: #ffffff;
-        --ag-header-background-color: #f7fafc;
-        --ag-odd-row-background-color: #f7fafc;
-        --ag-border-color: #e2e8f0;
-        --ag-row-hover-color: rgba(102, 126, 234, 0.1);
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -330,42 +257,6 @@ def format_percentage(value):
     return f"{value:.2f}%"
 
 
-def create_aggrid_table(df, height=400, selection_mode='single'):
-    """Create a modern AG Grid table with custom styling."""
-    gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_pagination(paginationAutoPageSize=True)
-    gb.configure_side_bar()
-    gb.configure_selection(selection_mode=selection_mode, use_checkbox=False)
-    gb.configure_default_column(
-        resizable=True,
-        filterable=True,
-        sortable=True,
-        editable=False
-    )
-    gridOptions = gb.build()
-    
-    return AgGrid(
-        df,
-        gridOptions=gridOptions,
-        height=height,
-        theme='streamlit',
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
-        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        fit_columns_on_grid_load=True,
-        enable_enterprise_modules=False
-    )
-
-
-def show_loading_spinner(message="Loading..."):
-    """Display a custom loading spinner."""
-    st.markdown(f"""
-    <div style="text-align: center; padding: 2rem;">
-        <div class="spinner"></div>
-        <p style="color: #718096; margin-top: 1rem;">{message}</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-
 # Main Header with modern styling
 st.markdown("""
 <div style="text-align: center; padding: 1rem 0 2rem 0;">
@@ -373,29 +264,6 @@ st.markdown("""
     <p style="font-size: 1.2rem; color: #718096; font-weight: 500;">Advanced Trading Analytics Dashboard</p>
 </div>
 """, unsafe_allow_html=True)
-
-# Sidebar Navigation Menu
-with st.sidebar:
-    selected_menu = option_menu(
-        menu_title="Navigation",
-        options=["📊 Dashboard", "📁 Upload Files", "⚙️ Settings", "ℹ️ Help"],
-        icons=["graph-up", "cloud-upload", "gear", "info-circle"],
-        menu_icon="cast",
-        default_index=0,
-        styles={
-            "container": {"padding": "0!important", "background-color": "transparent"},
-            "icon": {"color": "white", "font-size": "18px"},
-            "nav-link": {
-                "font-size": "14px",
-                "text-align": "left",
-                "margin": "5px",
-                "padding": "10px",
-                "border-radius": "8px",
-                "color": "white",
-            },
-            "nav-link-selected": {"background-color": "rgba(255, 255, 255, 0.2)"},
-        }
-    )
 
 # Sidebar - File Upload Section
 st.sidebar.header("📁 File Upload")
@@ -436,24 +304,19 @@ if 'initial_capital' not in st.session_state:
 
 # Load data when files are uploaded
 if tradebook_file is not None and pnl_file is not None:
-    # Custom loading animation
-    loading_placeholder = st.empty()
-    with loading_placeholder.container():
-        show_loading_spinner("📊 Loading and parsing Excel files...")
-    
-    df_tb, df_pnl, error_tb, error_pnl, total_charges = load_data(tradebook_file, pnl_file)
-    loading_placeholder.empty()  # Clear loading spinner
-    
-    if error_tb or error_pnl:
-        st.error(f"Error loading files: {error_tb or error_pnl}")
-        st.session_state.tradebook_data = None
-        st.session_state.pnl_data = None
-        st.session_state.total_charges = 0.0
-    else:
-        st.session_state.tradebook_data = df_tb
-        st.session_state.pnl_data = df_pnl
-        st.session_state.total_charges = total_charges
-        st.sidebar.success("✓ Files loaded successfully!")
+    with st.spinner("Loading and parsing Excel files..."):
+        df_tb, df_pnl, error_tb, error_pnl, total_charges = load_data(tradebook_file, pnl_file)
+        
+        if error_tb or error_pnl:
+            st.error(f"Error loading files: {error_tb or error_pnl}")
+            st.session_state.tradebook_data = None
+            st.session_state.pnl_data = None
+            st.session_state.total_charges = 0.0
+        else:
+            st.session_state.tradebook_data = df_tb
+            st.session_state.pnl_data = df_pnl
+            st.session_state.total_charges = total_charges
+            st.sidebar.success("✓ Files loaded successfully!")
 else:
     st.session_state.tradebook_data = None
     st.session_state.pnl_data = None
@@ -907,36 +770,32 @@ if filtered_tradebook is not None and filtered_pnl is not None:
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("🏆 Top 10 Winners")
+        st.subheader("Top 10 Winners")
         if len(filtered_pnl) > 0 and 'Realized P&L' in filtered_pnl.columns:
             top_count = min(10, len(filtered_pnl))
             top_winners = filtered_pnl.nlargest(top_count, 'Realized P&L')[
                 ['Symbol', 'Quantity', 'Buy Value', 'Sell Value', 'Realized P&L', 'Realized P&L Pct.']
-            ].copy()
-            # Format for display
-            top_winners_display = top_winners.copy()
-            top_winners_display['Buy Value'] = top_winners_display['Buy Value'].apply(lambda x: f"₹{x:,.2f}")
-            top_winners_display['Sell Value'] = top_winners_display['Sell Value'].apply(lambda x: f"₹{x:,.2f}")
-            top_winners_display['Realized P&L'] = top_winners_display['Realized P&L'].apply(lambda x: f"₹{x:,.2f}")
-            top_winners_display['Realized P&L Pct.'] = top_winners_display['Realized P&L Pct.'].apply(lambda x: f"{x:.2f}%")
-            create_aggrid_table(top_winners_display, height=350, selection_mode='single')
+            ]
+            top_winners['Realized P&L'] = top_winners['Realized P&L'].apply(format_currency)
+            top_winners['Buy Value'] = top_winners['Buy Value'].apply(format_currency)
+            top_winners['Sell Value'] = top_winners['Sell Value'].apply(format_currency)
+            top_winners['Realized P&L Pct.'] = top_winners['Realized P&L Pct.'].apply(format_percentage)
+            st.dataframe(top_winners, use_container_width=True, hide_index=True)
         else:
             st.info("No winners data available")
     
     with col2:
-        st.subheader("📉 Top 10 Losers")
+        st.subheader("Top 10 Losers")
         if len(filtered_pnl) > 0 and 'Realized P&L' in filtered_pnl.columns:
             top_count = min(10, len(filtered_pnl))
             top_losers = filtered_pnl.nsmallest(top_count, 'Realized P&L')[
                 ['Symbol', 'Quantity', 'Buy Value', 'Sell Value', 'Realized P&L', 'Realized P&L Pct.']
-            ].copy()
-            # Format for display
-            top_losers_display = top_losers.copy()
-            top_losers_display['Buy Value'] = top_losers_display['Buy Value'].apply(lambda x: f"₹{x:,.2f}")
-            top_losers_display['Sell Value'] = top_losers_display['Sell Value'].apply(lambda x: f"₹{x:,.2f}")
-            top_losers_display['Realized P&L'] = top_losers_display['Realized P&L'].apply(lambda x: f"₹{x:,.2f}")
-            top_losers_display['Realized P&L Pct.'] = top_losers_display['Realized P&L Pct.'].apply(lambda x: f"{x:.2f}%")
-            create_aggrid_table(top_losers_display, height=350, selection_mode='single')
+            ]
+            top_losers['Realized P&L'] = top_losers['Realized P&L'].apply(format_currency)
+            top_losers['Buy Value'] = top_losers['Buy Value'].apply(format_currency)
+            top_losers['Sell Value'] = top_losers['Sell Value'].apply(format_currency)
+            top_losers['Realized P&L Pct.'] = top_losers['Realized P&L Pct.'].apply(format_percentage)
+            st.dataframe(top_losers, use_container_width=True, hide_index=True)
         else:
             st.info("No losers data available")
     
