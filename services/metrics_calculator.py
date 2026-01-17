@@ -568,12 +568,13 @@ def calculate_max_drawdown(cumulative_pnl):
     return max_drawdown
 
 
-def get_win_rate_by_symbol(pnl_data):
+def get_win_rate_by_symbol(pnl_data, trades=None):
     """
-    Calculate win rate for each symbol.
+    Calculate win rate for each symbol based on individual trades.
     
     Args:
         pnl_data: DataFrame with P&L data
+        trades: DataFrame with tradebook data (optional, for accurate trade-level win rate)
         
     Returns:
         DataFrame: Win rate by symbol
@@ -581,8 +582,79 @@ def get_win_rate_by_symbol(pnl_data):
     if pnl_data is None or len(pnl_data) == 0:
         return pd.DataFrame(columns=['Symbol', 'Win Rate %'])
     
-    # Each row in P&L represents a stock's overall P&L
-    # Win rate by symbol is simply 100% if profitable, 0% if not
+    # If trades data is provided, calculate win rate from individual trade matches
+    if trades is not None and len(trades) > 0:
+        win_rate_list = []
+        
+        for symbol in trades['Symbol'].unique():
+            symbol_trades = trades[trades['Symbol'] == symbol].copy()
+            
+            # Get trade matches with P&L for this symbol
+            # Sort by Trade Date and Order Execution Time for proper FIFO matching
+            if 'Order Execution Time' in symbol_trades.columns:
+                symbol_trades['ExecTime'] = pd.to_datetime(
+                    symbol_trades['Order Execution Time'], 
+                    errors='coerce'
+                )
+                symbol_trades = symbol_trades.sort_values(
+                    ['Trade Date', 'ExecTime', 'Trade ID'],
+                    na_position='last'
+                )
+            else:
+                symbol_trades = symbol_trades.sort_values(['Trade Date', 'Trade ID'])
+            
+            buy_queue = []
+            winning_trades = 0
+            total_trades = 0
+            
+            for _, trade in symbol_trades.iterrows():
+                trade_date = trade['Trade Date']
+                quantity = trade['Quantity']
+                price = trade['Price']
+                
+                if pd.isna(trade_date) or pd.isna(quantity) or pd.isna(price):
+                    continue
+                
+                if trade['Trade Type'] == 'buy':
+                    buy_queue.append({'quantity': quantity, 'price': price})
+                elif trade['Trade Type'] == 'sell' and len(buy_queue) > 0:
+                    remaining_sell = quantity
+                    sell_price = price
+                    
+                    # Accumulate total P&L for this sell transaction
+                    total_sell_pnl = 0.0
+                    
+                    while remaining_sell > 0 and len(buy_queue) > 0:
+                        buy = buy_queue[0]
+                        matched_qty = min(buy['quantity'], remaining_sell)
+                        pnl = (sell_price - buy['price']) * matched_qty
+                        
+                        # Accumulate P&L for this sell transaction
+                        total_sell_pnl += pnl
+                        
+                        if buy['quantity'] <= remaining_sell:
+                            remaining_sell -= buy['quantity']
+                            buy_queue.pop(0)
+                        else:
+                            buy['quantity'] -= matched_qty
+                            remaining_sell = 0
+                    
+                    # Count this entire sell transaction as ONE trade
+                    total_trades += 1
+                    if total_sell_pnl > 0:
+                        winning_trades += 1
+            
+            if total_trades > 0:
+                win_rate_pct = (winning_trades / total_trades) * 100
+                win_rate_list.append({
+                    'Symbol': symbol,
+                    'Win Rate %': win_rate_pct
+                })
+        
+        if len(win_rate_list) > 0:
+            return pd.DataFrame(win_rate_list).sort_values('Win Rate %', ascending=False)
+    
+    # Fallback: Use P&L data (less accurate - just shows if overall symbol P&L is positive)
     win_rate = pnl_data.copy()
     win_rate['Win Rate %'] = win_rate['Realized P&L'].apply(lambda x: 100.0 if x > 0 else 0.0)
     
@@ -657,3 +729,227 @@ def get_trade_duration_distribution(trades):
     distribution = [days for days, _ in periods]
     
     return distribution
+
+
+def match_trades_with_pnl(trades):
+    """
+    Match buy and sell trades to calculate holding periods with P&L.
+    Uses FIFO (First In First Out) matching.
+    Returns list of (holding_days, pnl, quantity) tuples for analysis.
+    
+    Args:
+        trades: DataFrame with tradebook data
+        
+    Returns:
+        list: List of tuples (holding_days, pnl, quantity) for each matched trade
+    """
+    trade_matches = []  # List of (days, pnl, quantity) tuples
+    
+    # Group trades by symbol
+    for symbol in trades['Symbol'].unique():
+        symbol_trades = trades[trades['Symbol'] == symbol].copy()
+        
+        # Sort by Trade Date and Order Execution Time for proper FIFO matching
+        if 'Order Execution Time' in symbol_trades.columns:
+            symbol_trades['ExecTime'] = pd.to_datetime(
+                symbol_trades['Order Execution Time'], 
+                errors='coerce'
+            )
+            symbol_trades = symbol_trades.sort_values(
+                ['Trade Date', 'ExecTime', 'Trade ID'],
+                na_position='last'
+            )
+        else:
+            symbol_trades = symbol_trades.sort_values(['Trade Date', 'Trade ID'])
+        
+        buy_queue = []  # List of {date, quantity, price}
+        
+        for _, trade in symbol_trades.iterrows():
+            trade_date = trade['Trade Date']
+            quantity = trade['Quantity']
+            price = trade['Price']
+            
+            if pd.isna(trade_date) or pd.isna(quantity) or pd.isna(price):
+                continue
+                
+            if trade['Trade Type'] == 'buy':
+                # Add buy trade to queue (FIFO)
+                buy_queue.append({
+                    'date': trade_date,
+                    'quantity': quantity,
+                    'price': price
+                })
+            elif trade['Trade Type'] == 'sell' and len(buy_queue) > 0:
+                # Match sell with earliest buy (FIFO)
+                remaining_sell = quantity
+                sell_price = price
+                
+                while remaining_sell > 0 and len(buy_queue) > 0:
+                    buy = buy_queue[0]
+                    buy_date = buy['date']
+                    buy_price = buy['price']
+                    
+                    # Calculate holding period in days
+                    holding_days = (trade_date - buy_date).days
+                    
+                    # Ensure holding period is non-negative
+                    if holding_days < 0:
+                        buy_queue.pop(0)
+                        continue
+                    
+                    if buy['quantity'] <= remaining_sell:
+                        # Use entire buy trade
+                        matched_qty = buy['quantity']
+                        pnl = (sell_price - buy_price) * matched_qty
+                        trade_matches.append((holding_days, pnl, matched_qty))
+                        remaining_sell -= matched_qty
+                        buy_queue.pop(0)
+                    else:
+                        # Use partial buy trade
+                        matched_qty = remaining_sell
+                        pnl = (sell_price - buy_price) * matched_qty
+                        trade_matches.append((holding_days, pnl, matched_qty))
+                        buy['quantity'] -= matched_qty
+                        remaining_sell = 0
+    
+    return trade_matches
+
+
+def calculate_holding_sentiment(trades):
+    """
+    Analyze holding period vs profitability by trading style to generate insights.
+    Categories: Intraday (0 days), BTST (1 day), Velocity (2-4 days), Swing (>4 days)
+    
+    Args:
+        trades: DataFrame with tradebook data
+        
+    Returns:
+        dict: Sentiment analysis with recommendations by trading style
+    """
+    if trades is None or len(trades) == 0:
+        return {
+            'sentiment': 'neutral',
+            'intraday': {'count': 0, 'win_rate': 0.0, 'avg_pnl': 0.0},
+            'btst': {'count': 0, 'win_rate': 0.0, 'avg_pnl': 0.0},
+            'velocity': {'count': 0, 'win_rate': 0.0, 'avg_pnl': 0.0},
+            'swing': {'count': 0, 'win_rate': 0.0, 'avg_pnl': 0.0},
+            'pure_swing': {'count': 0, 'win_rate': 0.0, 'avg_pnl': 0.0},
+            'recommendation': 'Insufficient data for analysis',
+            'best_style': None,
+            'worst_style': None
+        }
+    
+    # Get matched trades with P&L
+    trade_matches = match_trades_with_pnl(trades)
+    
+    if len(trade_matches) == 0:
+        return {
+            'sentiment': 'neutral',
+            'intraday': {'count': 0, 'win_rate': 0.0, 'avg_pnl': 0.0},
+            'btst': {'count': 0, 'win_rate': 0.0, 'avg_pnl': 0.0},
+            'velocity': {'count': 0, 'win_rate': 0.0, 'avg_pnl': 0.0},
+            'swing': {'count': 0, 'win_rate': 0.0, 'avg_pnl': 0.0},
+            'pure_swing': {'count': 0, 'win_rate': 0.0, 'avg_pnl': 0.0},
+            'recommendation': 'No completed trades to analyze',
+            'best_style': None,
+            'worst_style': None
+        }
+    
+    # Categorize trades by trading style
+    intraday_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days == 0]
+    btst_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days == 1]
+    velocity_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if 2 <= days <= 4]
+    swing_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days > 4]
+    pure_swing_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days > 1]  # All trades > 1 day
+    
+    # Helper function to calculate metrics
+    def calc_metrics(trade_list):
+        if len(trade_list) == 0:
+            return {'count': 0, 'win_rate': 0.0, 'avg_pnl': 0.0}
+        
+        wins = sum(1 for _, pnl, _ in trade_list if pnl > 0)
+        win_rate = (wins / len(trade_list)) * 100
+        avg_pnl = sum(pnl for _, pnl, _ in trade_list) / len(trade_list)
+        
+        return {
+            'count': len(trade_list),
+            'win_rate': win_rate,
+            'avg_pnl': avg_pnl
+        }
+    
+    # Calculate metrics for each style
+    intraday_metrics = calc_metrics(intraday_trades)
+    btst_metrics = calc_metrics(btst_trades)
+    velocity_metrics = calc_metrics(velocity_trades)
+    swing_metrics = calc_metrics(swing_trades)
+    pure_swing_metrics = calc_metrics(pure_swing_trades)
+    
+    # Determine best and worst performing styles (only if enough trades)
+    styles = []
+    if intraday_metrics['count'] >= 3:
+        styles.append(('Intraday', intraday_metrics))
+    if btst_metrics['count'] >= 3:
+        styles.append(('BTST', btst_metrics))
+    if velocity_metrics['count'] >= 3:
+        styles.append(('Velocity', velocity_metrics))
+    if swing_metrics['count'] >= 3:
+        styles.append(('Swing', swing_metrics))
+    if pure_swing_metrics['count'] >= 3:
+        styles.append(('Pure Swing', pure_swing_metrics))
+    
+    best_style = None
+    worst_style = None
+    recommendations = []
+    
+    if len(styles) >= 2:
+        # Sort by average P&L
+        styles_sorted = sorted(styles, key=lambda x: x[1]['avg_pnl'], reverse=True)
+        best_style = styles_sorted[0][0]
+        worst_style = styles_sorted[-1][0]
+        
+        best_metrics = styles_sorted[0][1]
+        worst_metrics = styles_sorted[-1][1]
+        
+        # Generate recommendations
+        recommendations.append("📊 **Trading Style Performance Analysis:**\n")
+        
+        # Best performing style
+        if best_metrics['avg_pnl'] > 0:
+            recommendations.append(f"✅ **{best_style}** is your most profitable style:")
+            recommendations.append(f"   • Trades: {best_metrics['count']}")
+            recommendations.append(f"   • Win Rate: {best_metrics['win_rate']:.1f}%")
+            recommendations.append(f"   • Avg P&L: ₹{best_metrics['avg_pnl']:.2f}")
+            recommendations.append(f"   💡 **Focus more on {best_style} trades**\n")
+        
+        # Worst performing style
+        if worst_metrics['avg_pnl'] < 0:
+            recommendations.append(f"⚠️ **{worst_style}** is losing money:")
+            recommendations.append(f"   • Trades: {worst_metrics['count']}")
+            recommendations.append(f"   • Win Rate: {worst_metrics['win_rate']:.1f}%")
+            recommendations.append(f"   • Avg P&L: ₹{worst_metrics['avg_pnl']:.2f}")
+            recommendations.append(f"   💡 **Reduce or avoid {worst_style} trades**\n")
+        
+        # Compare all styles
+        recommendations.append("📈 **Profitability Ranking:**")
+        for i, (style, metrics) in enumerate(styles_sorted, 1):
+            emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "📍"
+            recommendations.append(
+                f"{emoji} {style}: ₹{metrics['avg_pnl']:.2f} avg | "
+                f"{metrics['win_rate']:.1f}% win rate | {metrics['count']} trades"
+            )
+    else:
+        recommendations.append("Need more trades across different holding periods for comprehensive analysis")
+    
+    recommendation_text = '\n'.join(recommendations) if recommendations else 'Insufficient data for style-based analysis'
+    
+    return {
+        'sentiment': 'analyzed',
+        'intraday': intraday_metrics,
+        'btst': btst_metrics,
+        'velocity': velocity_metrics,
+        'swing': swing_metrics,
+        'pure_swing': pure_swing_metrics,
+        'recommendation': recommendation_text,
+        'best_style': best_style,
+        'worst_style': worst_style
+    }

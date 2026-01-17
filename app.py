@@ -353,6 +353,14 @@ if filtered_tradebook is not None and filtered_pnl is not None:
     with col5:
         st.metric("Max Drawdown", format_currency(max_drawdown), delta=None)
     
+    # Trading Style Recommendations at the top
+    if len(filtered_tradebook) > 0:
+        sentiment_data = mc.calculate_holding_sentiment(filtered_tradebook)
+        if sentiment_data['recommendation'] and (sentiment_data['best_style'] or sentiment_data['worst_style']):
+            st.markdown("---")
+            st.markdown("### 💡 Actionable Insights")
+            st.info(sentiment_data['recommendation'])
+    
     # P&L Analysis Section
     st.header("📈 P&L Analysis")
     
@@ -483,7 +491,7 @@ if filtered_tradebook is not None and filtered_pnl is not None:
     
     with col1:
         st.subheader("Win Rate by Symbol")
-        win_rate_by_symbol = mc.get_win_rate_by_symbol(filtered_pnl)
+        win_rate_by_symbol = mc.get_win_rate_by_symbol(filtered_pnl, filtered_tradebook)
         if len(win_rate_by_symbol) > 0:
             fig_win_rate = px.bar(
                 win_rate_by_symbol.head(20),
@@ -515,20 +523,69 @@ if filtered_tradebook is not None and filtered_pnl is not None:
         else:
             st.info("No data available")
     
-    # Trade Duration Distribution
-    st.subheader("Trade Duration Distribution")
-    duration_dist = mc.get_trade_duration_distribution(filtered_tradebook)
-    if len(duration_dist) > 0:
-        fig_dist = px.histogram(
-            x=duration_dist,
-            nbins=30,
-            title='Distribution of Trade Holding Periods',
-            labels={'x': 'Holding Period (Days)', 'count': 'Number of Trades'}
-        )
-        fig_dist.update_layout(height=400, xaxis_title="Holding Period (Days)", yaxis_title="Number of Trades")
-        st.plotly_chart(fig_dist, use_container_width=True)
+    # Trading Style Performance Analysis - Main Section
+    st.header("📊 Trading Style Performance")
+    st.markdown("---")
+    sentiment_data = mc.calculate_holding_sentiment(filtered_tradebook)
+    
+    total_analyzed = (sentiment_data['intraday']['count'] + 
+                     sentiment_data['btst']['count'] + 
+                     sentiment_data['velocity']['count'] + 
+                     sentiment_data['swing']['count'] + 
+                     sentiment_data['pure_swing']['count'])
+    
+    if total_analyzed > 0:
+        # Display metrics for each trading style
+        st.subheader("Performance by Trading Style")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.markdown("**Intraday (0 days)**")
+            st.metric("Trades", sentiment_data['intraday']['count'])
+            st.metric("Win Rate", f"{sentiment_data['intraday']['win_rate']:.1f}%")
+            st.metric("Avg P&L", format_currency(sentiment_data['intraday']['avg_pnl']))
+        
+        with col2:
+            st.markdown("**BTST (1 day)**")
+            st.metric("Trades", sentiment_data['btst']['count'])
+            st.metric("Win Rate", f"{sentiment_data['btst']['win_rate']:.1f}%")
+            st.metric("Avg P&L", format_currency(sentiment_data['btst']['avg_pnl']))
+        
+        with col3:
+            st.markdown("**Velocity (2-4 days)**")
+            st.metric("Trades", sentiment_data['velocity']['count'])
+            st.metric("Win Rate", f"{sentiment_data['velocity']['win_rate']:.1f}%")
+            st.metric("Avg P&L", format_currency(sentiment_data['velocity']['avg_pnl']))
+        
+        with col4:
+            st.markdown("**Swing (>4 days)**")
+            st.metric("Trades", sentiment_data['swing']['count'])
+            st.metric("Win Rate", f"{sentiment_data['swing']['win_rate']:.1f}%")
+            st.metric("Avg P&L", format_currency(sentiment_data['swing']['avg_pnl']))
+        
+        with col5:
+            st.markdown("**Pure Swing (>1 day)**")
+            st.metric("Trades", sentiment_data['pure_swing']['count'])
+            st.metric("Win Rate", f"{sentiment_data['pure_swing']['win_rate']:.1f}%")
+            st.metric("Avg P&L", format_currency(sentiment_data['pure_swing']['avg_pnl']))
+        
+        # Trade Duration Distribution
+        st.markdown("---")
+        st.subheader("Distribution of Trade Holding Periods")
+        duration_dist = mc.get_trade_duration_distribution(filtered_tradebook)
+        if len(duration_dist) > 0:
+            fig_dist = px.histogram(
+                x=duration_dist,
+                nbins=30,
+                title='Trade Duration Distribution',
+                labels={'x': 'Holding Period (Days)', 'count': 'Number of Trades'}
+            )
+            fig_dist.update_layout(height=400, xaxis_title="Holding Period (Days)", yaxis_title="Number of Trades")
+            st.plotly_chart(fig_dist, use_container_width=True)
+        else:
+            st.info("No trade duration data available")
     else:
-        st.info("No trade duration data available")
+        st.info("Insufficient trade data for trading style analysis")
 
 else:
     st.warning("No data available. Please upload files in the sidebar.")
