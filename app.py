@@ -16,6 +16,9 @@ from services.excel_reader import read_tradebook, read_pnl
 from services import metrics_calculator as mc
 from services import sector_mapper
 
+# Import MAE/MFE page module
+import mae_mfe_page
+
 # Page config
 st.set_page_config(
     page_title="ZeroJournal - Trading Dashboard",
@@ -517,34 +520,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Sidebar - File Upload Section
-st.sidebar.header("📁 File Upload")
-
-tradebook_file = st.sidebar.file_uploader(
-    "Upload Tradebook Excel File",
-    type=['xlsx', 'xls'],
-    help="Upload your Zerodha tradebook Excel file"
-)
-
-pnl_file = st.sidebar.file_uploader(
-    "Upload P&L Statement Excel File",
-    type=['xlsx', 'xls'],
-    help="Upload your Zerodha P&L statement Excel file"
-)
-
-# File format instructions
-with st.sidebar.expander("ℹ️ File Format Info"):
-    st.info("""
-    **Expected Format:**
-    - Zerodha tradebook and P&L Excel files
-    - Files should have standard Zerodha export format
-    
-    **Required Columns:**
-    - Tradebook: Symbol, ISIN, Trade Date, Trade Type, Quantity, Price
-    - P&L: Symbol, ISIN, Quantity, Buy Value, Sell Value, Realized P&L
-    """)
-
-# Initialize session state
+# Initialize session state FIRST (before any checks)
 if 'tradebook_data' not in st.session_state:
     st.session_state.tradebook_data = None
 if 'pnl_data' not in st.session_state:
@@ -553,9 +529,71 @@ if 'total_charges' not in st.session_state:
     st.session_state.total_charges = 0.0
 if 'initial_capital' not in st.session_state:
     st.session_state.initial_capital = 0.0
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = 'main'
+if 'filtered_tradebook' not in st.session_state:
+    st.session_state.filtered_tradebook = None
+if 'filtered_pnl' not in st.session_state:
+    st.session_state.filtered_pnl = None
 
-# Load data when files are uploaded
-if tradebook_file is not None and pnl_file is not None:
+# Sidebar - File Upload Section (only show if no files are loaded)
+if st.session_state.tradebook_data is None or st.session_state.pnl_data is None:
+    st.sidebar.header("📁 File Upload")
+    
+    tradebook_file = st.sidebar.file_uploader(
+        "Upload Tradebook Excel File",
+        type=['xlsx', 'xls'],
+        help="Upload your Zerodha tradebook Excel file"
+    )
+    
+    pnl_file = st.sidebar.file_uploader(
+        "Upload P&L Statement Excel File",
+        type=['xlsx', 'xls'],
+        help="Upload your Zerodha P&L statement Excel file"
+    )
+    
+    # File format instructions
+    with st.sidebar.expander("ℹ️ File Format Info"):
+        st.info("""
+        **Expected Format:**
+        - Zerodha tradebook and P&L Excel files
+        - Files should have standard Zerodha export format
+        
+        **Required Columns:**
+        - Tradebook: Symbol, ISIN, Trade Date, Trade Type, Quantity, Price
+        - P&L: Symbol, ISIN, Quantity, Buy Value, Sell Value, Realized P&L
+        """)
+else:
+    # Re-upload button at top of sidebar
+    if st.sidebar.button("🔄 Re-upload Files", use_container_width=True, type="secondary", key="reupload_btn"):
+        # Clear all session state
+        st.session_state.tradebook_data = None
+        st.session_state.pnl_data = None
+        st.session_state.total_charges = 0.0
+        st.session_state.filtered_tradebook = None
+        st.session_state.filtered_pnl = None
+        st.session_state.current_page = 'main'
+        if 'mae_mfe_data' in st.session_state:
+            st.session_state.mae_mfe_data = None
+        st.rerun()
+    
+    # MAE/MFE Analysis button at top of sidebar
+    if st.session_state.current_page == 'mae_mfe':
+        if st.sidebar.button("🏠 Back to Dashboard", use_container_width=True, type="primary", key="back_to_dashboard_btn"):
+            st.session_state.current_page = 'main'
+            st.rerun()
+    else:
+        if st.sidebar.button("🎯 MAE/MFE Analysis", use_container_width=True, type="primary", key="mae_mfe_btn"):
+            st.session_state.current_page = 'mae_mfe'
+            st.rerun()
+    
+    st.sidebar.markdown("---")
+    
+    tradebook_file = None
+    pnl_file = None
+
+# Load data when files are uploaded (only if not already loaded)
+if tradebook_file is not None and pnl_file is not None and st.session_state.tradebook_data is None:
     with st.spinner("Loading and parsing Excel files..."):
         df_tb, df_pnl, error_tb, error_pnl, total_charges = load_data(tradebook_file, pnl_file)
         
@@ -568,11 +606,23 @@ if tradebook_file is not None and pnl_file is not None:
             st.session_state.tradebook_data = df_tb
             st.session_state.pnl_data = df_pnl
             st.session_state.total_charges = total_charges
-            st.sidebar.success("✓ Files loaded successfully!")
-else:
-    st.session_state.tradebook_data = None
-    st.session_state.pnl_data = None
-    st.session_state.total_charges = 0.0
+            
+            # Optimization 2: Pre-initialize NSE data (only once per session)
+            if not st.session_state.get('master_loaded', False):
+                try:
+                    from openchart import NSEData
+                    # Just initialize to warm up the connection
+                    nse_data = NSEData()
+                    st.session_state.master_loaded = True
+                    print("NSE data initialized successfully")
+                except ImportError:
+                    # openchart not available, skip
+                    st.session_state.master_loaded = True
+                except Exception as e:
+                    print(f"Error initializing NSE data: {e}")
+                    st.session_state.master_loaded = True  # Mark as attempted to avoid retry
+            
+            st.rerun()  # Rerun to hide file uploaders
 
 # Get data from session state
 df_tradebook = st.session_state.tradebook_data
@@ -969,6 +1019,16 @@ else:
     max_drawdown = 0.0
     daily_pnl = pd.DataFrame(columns=['Date', 'PnL'])
     cumulative_pnl = pd.DataFrame(columns=['Date', 'Cumulative P&L'])
+
+# Store filtered data in session state BEFORE any page navigation
+if filtered_tradebook is not None and filtered_pnl is not None:
+    st.session_state.filtered_tradebook = filtered_tradebook
+    st.session_state.filtered_pnl = filtered_pnl
+
+# Show appropriate page based on session state
+if st.session_state.current_page == 'mae_mfe':
+    mae_mfe_page.show()
+    st.stop()
 
 # Main Content - Dashboard
 if filtered_tradebook is not None and filtered_pnl is not None:

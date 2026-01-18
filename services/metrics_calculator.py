@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import config
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def calculate_win_rate(pnl_data):
@@ -1530,3 +1532,278 @@ def calculate_cumulative_metrics(trades):
         })
     
     return pd.DataFrame(cumulative_data)
+
+
+def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=None):
+    """
+    Calculate MAE (Maximum Adverse Excursion) and MFE (Maximum Favorable Excursion) 
+    for all completed trades using NSE historical data.
+    
+    MAE: How far the price went AGAINST you during the trade
+    MFE: How far the price went IN YOUR FAVOR during the trade
+    
+    Args:
+        trades: DataFrame with tradebook data
+        progress_callback: Optional function(progress, message) to report progress
+        fetch_function: Optional cached fetch function (for optimization)
+        
+    Returns:
+        DataFrame with columns: ['Symbol', 'Entry Date', 'Exit Date', 'Entry Price', 
+                                 'Exit Price', 'Lowest Price', 'Highest Price', 
+                                 'MAE %', 'MFE %', 'Exit P&L %', 'Exit Efficiency %', 
+                                 'Holding Days', 'Data Source']
+    """
+    import time
+    from datetime import timedelta
+    if trades is None or len(trades) == 0:
+        return pd.DataFrame()
+    
+    # Initialize openchart instance once (reuse for all symbols)
+    openchart_nse = None
+    try:
+        from openchart import NSEData
+        if progress_callback:
+            progress_callback(5, "Initializing openchart...")
+        openchart_nse = NSEData()
+        print("openchart initialized successfully")
+    except Exception as e:
+        print(f"openchart not available: {e}")
+        return pd.DataFrame()
+    
+    # Helper function to fetch historical data (with caching support)
+    def fetch_hist_data(symbol, start_date, end_date, interval):
+        """Fetch historical data, using cached function if provided"""
+        if fetch_function:
+            # Use cached function from Streamlit
+            symbol_variants = [
+                f"{symbol}-EQ",
+                symbol,
+                symbol.upper(),
+                symbol.replace(' ', ''),
+            ]
+            for chart_symbol in symbol_variants:
+                try:
+                    hist_data = fetch_function(chart_symbol, start_date, end_date, interval)
+                    if not hist_data.empty and 'Open' in hist_data.columns and 'High' in hist_data.columns:
+                        return hist_data, chart_symbol
+                except:
+                    continue
+            return pd.DataFrame(), None
+        else:
+            # Direct fetch without cache
+            symbol_variants = [
+                f"{symbol}-EQ",
+                symbol,
+                symbol.upper(),
+                symbol.replace(' ', ''),
+            ]
+            for chart_symbol in symbol_variants:
+                try:
+                    hist_data = openchart_nse.historical(
+                        symbol=chart_symbol,
+                        segment='EQ',
+                        start=start_date,
+                        end=end_date + timedelta(days=1),
+                        interval=interval
+                    )
+                    if not hist_data.empty:
+                        hist_data.columns = [col.title() for col in hist_data.columns]
+                        if 'Open' in hist_data.columns and 'High' in hist_data.columns:
+                            return hist_data, chart_symbol
+                except:
+                    continue
+            return pd.DataFrame(), None
+    
+    # Step 1: Collect all trade pairs using FIFO matching
+    if progress_callback:
+        progress_callback(10, "Matching buy-sell pairs...")
+    
+    trade_pairs = []  # List of (buy_trade, sell_trade, symbol) tuples
+    unique_symbols = trades['Symbol'].unique()
+    
+    for symbol in unique_symbols:
+        symbol_trades = trades[trades['Symbol'] == symbol].copy()
+        
+        # Sort by date and execution time
+        if 'Order Execution Time' in symbol_trades.columns:
+            symbol_trades['ExecTime'] = pd.to_datetime(
+                symbol_trades['Order Execution Time'], 
+                errors='coerce'
+            )
+            symbol_trades = symbol_trades.sort_values(
+                ['Trade Date', 'ExecTime', 'Trade ID'],
+                na_position='last'
+            )
+        else:
+            symbol_trades = symbol_trades.sort_values(['Trade Date', 'Trade ID'])
+        
+        buy_queue = []
+        for idx, trade_row in symbol_trades.iterrows():
+            trade = trade_row.to_dict()
+            if trade.get('Trade Type') == 'buy':
+                buy_queue.append(trade)
+            elif trade.get('Trade Type') == 'sell' and len(buy_queue) > 0:
+                buy_trade = buy_queue.pop(0)
+                trade_pairs.append((buy_trade, trade, symbol))
+    
+    total_pairs = len(trade_pairs)
+    if total_pairs == 0:
+        return pd.DataFrame()
+    
+    if progress_callback:
+        progress_callback(15, f"Found {total_pairs} trade pairs. Preparing parallel fetch...")
+    
+    # Step 2: Prepare fetch requests
+    fetch_requests = []
+    for buy_trade, sell_trade, symbol in trade_pairs:
+        start_date = pd.to_datetime(buy_trade.get('Trade Date'))
+        end_date = pd.to_datetime(sell_trade.get('Trade Date'))
+        holding_days = (end_date - start_date).days
+        interval = '5m' if holding_days == 0 else '1d'
+        
+        fetch_requests.append({
+            'symbol': symbol,
+            'start_date': start_date,
+            'end_date': end_date,
+            'interval': interval,
+            'buy_trade': buy_trade,
+            'sell_trade': sell_trade,
+            'holding_days': holding_days
+        })
+    
+    # Step 3: Parallel fetch using ThreadPoolExecutor (Optimization 3: Batch Requests)
+    def fetch_single_request(request):
+        """Fetch data for a single request"""
+        try:
+            hist_data, used_symbol = fetch_hist_data(
+                request['symbol'],
+                request['start_date'],
+                request['end_date'],
+                request['interval']
+            )
+            return {
+                'request': request,
+                'hist_data': hist_data,
+                'used_symbol': used_symbol,
+                'success': not hist_data.empty
+            }
+        except Exception as e:
+            return {
+                'request': request,
+                'hist_data': pd.DataFrame(),
+                'used_symbol': None,
+                'success': False,
+                'error': str(e)
+            }
+    
+    mae_mfe_results = []
+    completed_fetches = 0
+    
+    if progress_callback:
+        progress_callback(20, f"Fetching data for {total_pairs} trades in parallel...")
+    
+    # Use ThreadPoolExecutor with max 10 workers (NSE can handle ~10 concurrent)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # Submit all fetch requests
+        future_to_request = {
+            executor.submit(fetch_single_request, req): req 
+            for req in fetch_requests
+        }
+        
+        # Process completed fetches as they come in
+        for future in as_completed(future_to_request):
+            completed_fetches += 1
+            result = future.result()
+            request = result['request']
+            
+            # Update progress
+            if progress_callback and total_pairs > 0:
+                fetch_progress = 20 + int((completed_fetches / total_pairs) * 70)
+                progress_callback(
+                    fetch_progress, 
+                    f"Fetched {completed_fetches}/{total_pairs} trades..."
+                )
+            
+            if not result['success']:
+                continue
+            
+            hist_data = result['hist_data']
+            buy_trade = request['buy_trade']
+            sell_trade = request['sell_trade']
+            symbol = request['symbol']
+            holding_days = request['holding_days']
+            
+            try:
+                buy_price = buy_trade.get('Price', 0)
+                sell_price = sell_trade.get('Price', 0)
+                
+                if buy_price == 0 or sell_price == 0:
+                    continue
+                
+                # Ensure we have required columns
+                required_cols = ['Low', 'High']
+                if not all(col in hist_data.columns for col in required_cols):
+                    continue
+                
+                lowest_price = hist_data['Low'].min()
+                highest_price = hist_data['High'].max()
+                
+                if pd.isna(lowest_price) or pd.isna(highest_price):
+                    continue
+                
+                # Calculate MAE and MFE
+                mae = buy_price - lowest_price
+                mfe = highest_price - buy_price
+                
+                mae_pct = (mae / buy_price) * 100
+                mfe_pct = (mfe / buy_price) * 100
+                
+                exit_pnl = sell_price - buy_price
+                exit_pnl_pct = (exit_pnl / buy_price) * 100
+                
+                exit_efficiency = (exit_pnl / mfe * 100) if (mfe > 0 and exit_pnl > 0) else 0
+                
+                start_date = request['start_date']
+                end_date = request['end_date']
+                
+                mae_mfe_results.append({
+                    'Symbol': symbol,
+                    'Entry Date': start_date.date() if hasattr(start_date, 'date') else start_date,
+                    'Exit Date': end_date.date() if hasattr(end_date, 'date') else end_date,
+                    'Entry Price': buy_price,
+                    'Exit Price': sell_price,
+                    'Lowest Price': lowest_price,
+                    'Highest Price': highest_price,
+                    'MAE %': mae_pct,
+                    'MFE %': mfe_pct,
+                    'Exit P&L %': exit_pnl_pct,
+                    'Exit Efficiency %': exit_efficiency,
+                    'Holding Days': holding_days,
+                    'Data Source': 'openchart'
+                })
+            except Exception as e:
+                print(f"Error processing {symbol} trade: {e}")
+                continue
+    
+    result_df = pd.DataFrame(mae_mfe_results)
+    
+    # Debug: Print summary
+    if len(result_df) == 0:
+        print(f"Warning: No MAE/MFE data calculated. Processed {len(trades)} trades.")
+        print(f"Unique symbols: {list(trades['Symbol'].unique()[:10])}")  # Show first 10 symbols
+        
+        # Count buy/sell pairs
+        buy_count = len(trades[trades['Trade Type'].str.lower() == 'buy'])
+        sell_count = len(trades[trades['Trade Type'].str.lower() == 'sell'])
+        print(f"Buy trades: {buy_count}, Sell trades: {sell_count}")
+        
+        # Check if we have matched pairs
+        matched_pairs = 0
+        for symbol in trades['Symbol'].unique():
+            symbol_trades = trades[trades['Symbol'] == symbol]
+            buys = symbol_trades[symbol_trades['Trade Type'].str.lower() == 'buy']
+            sells = symbol_trades[symbol_trades['Trade Type'].str.lower() == 'sell']
+            matched_pairs += min(len(buys), len(sells))
+        print(f"Potential matched pairs: {matched_pairs}")
+    
+    return result_df
