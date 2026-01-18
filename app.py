@@ -963,8 +963,6 @@ else:
     cumulative_pnl = pd.DataFrame(columns=['Date', 'Cumulative P&L'])
 
 # Main Content - Dashboard
-st.header("📊 Trading Dashboard")
-
 if filtered_tradebook is not None and filtered_pnl is not None:
     # Check if we have any data to display
     has_data = len(filtered_tradebook) > 0 or len(filtered_pnl) > 0
@@ -973,18 +971,52 @@ if filtered_tradebook is not None and filtered_pnl is not None:
         st.warning("⚠️ No data available for the selected filters. Please adjust your date range or symbol filters.")
         st.stop()
     
-    # Display filter summary at the top of main content
-    if df_tradebook is not None and (selected_sectors or selected_symbols or (start_date and end_date)):
-        filter_parts = []
-        if enable_sector_filter and selected_sectors:
-            filter_parts.append(f"**Sector:** {selected_sectors[0]}")
-        if selected_symbols:
-            filter_parts.append(f"**Symbol:** {selected_symbols[0]}")
-        if start_date and end_date:
-            filter_parts.append(f"**Date Range:** {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+    # Key Insights Section (moved to top)
+    if len(filtered_tradebook) > 0:
+        st.markdown("---")
+        st.markdown("### 💡 Key Insights")
         
-        unique_symbols = len(filtered_tradebook['Symbol'].unique()) if len(filtered_tradebook) > 0 else 0
-        st.info(f"🔍 **Filtered View:** {' | '.join(filter_parts)} | **{len(filtered_tradebook)} trades** from **{unique_symbols} symbols**")
+        # Calculate advanced metrics for insights
+        expectancy_data = mc.calculate_expectancy(filtered_tradebook)
+        risk_reward_data = mc.calculate_risk_reward_ratio(filtered_tradebook)
+        streaks_data = mc.calculate_consecutive_streaks(filtered_tradebook)
+        
+        exp_overall = expectancy_data['overall']['expectancy']
+        exp_intraday = expectancy_data['intraday']['expectancy']
+        exp_swing = expectancy_data['swing']['expectancy']
+        rr_overall = risk_reward_data['overall']['ratio']
+        
+        insights = []
+        
+        # Expectancy insights
+        if exp_overall > 0:
+            insights.append(f"✅ **Positive Expectancy**: Your system has a positive edge of ₹{exp_overall:.2f} per trade.")
+        else:
+            insights.append(f"⚠️ **Negative Expectancy**: Your system loses ₹{abs(exp_overall):.2f} per trade on average. Review your strategy.")
+        
+        # Compare intraday vs swing
+        if exp_intraday > exp_swing and exp_intraday > 0:
+            insights.append(f"📊 **Intraday is more profitable** (₹{exp_intraday:.2f}) than Swing (₹{exp_swing:.2f}). Consider focusing on intraday.")
+        elif exp_swing > exp_intraday and exp_swing > 0:
+            insights.append(f"📊 **Swing is more profitable** (₹{exp_swing:.2f}) than Intraday (₹{exp_intraday:.2f}). Consider focusing on swing trades.")
+        
+        # Risk-Reward insights
+        if rr_overall < 1.0:
+            insights.append(f"⚠️ **Poor Risk-Reward**: Your average win (₹{risk_reward_data['overall']['avg_win']:.2f}) is smaller than average loss (₹{risk_reward_data['overall']['avg_loss']:.2f}). Let winners run longer!")
+        elif rr_overall > 2.0:
+            insights.append(f"✅ **Excellent Risk-Reward**: You're cutting losses and letting winners run. Keep it up!")
+        
+        # Streak insights
+        if streaks_data['overall']['max_loss_streak'] > 5:
+            insights.append(f"⚠️ **High Loss Streak**: You've had {streaks_data['overall']['max_loss_streak']} consecutive losses. Prepare mentally for such drawdowns.")
+        
+        # Trading Style Recommendations
+        sentiment_data = mc.calculate_holding_sentiment(filtered_tradebook)
+        if sentiment_data['recommendation'] and (sentiment_data['best_style'] or sentiment_data['worst_style']):
+            insights.append(f"🎯 **Trading Style**: {sentiment_data['recommendation']}")
+        
+        for insight in insights:
+            st.info(insight)
     
     st.markdown("---")
     
@@ -1074,6 +1106,12 @@ if filtered_tradebook is not None and filtered_pnl is not None:
         .nav-button-5:hover {
             background: #FFF3E0;
         }
+        .nav-button-6 .icon {
+            color: #00BCD4;
+        }
+        .nav-button-6:hover {
+            background: #E0F7FA;
+        }
         </style>
     """, unsafe_allow_html=True)
     
@@ -1084,8 +1122,12 @@ if filtered_tradebook is not None and filtered_pnl is not None:
                 <span class="icon">📊</span>
                 <span class="label">Performance Metrics</span>
             </a>
-            <a href="#p-l-analysis" class="nav-button nav-button-2">
+            <a href="#performance-trends" class="nav-button nav-button-6">
                 <span class="icon">📈</span>
+                <span class="label">Performance Trends</span>
+            </a>
+            <a href="#p-l-analysis" class="nav-button nav-button-2">
+                <span class="icon">💹</span>
                 <span class="label">P&L Analysis</span>
             </a>
             <a href="#top-winners-losers" class="nav-button nav-button-3">
@@ -1143,13 +1185,476 @@ if filtered_tradebook is not None and filtered_pnl is not None:
                     mui.Typography("Max Drawdown", variant="caption", sx={"color": "#757575", "textTransform": "uppercase", "letterSpacing": "0.1em", "fontWeight": 500, "fontSize": "0.75rem"})
                     mui.Typography(format_currency(max_drawdown), variant="h4", sx={"fontWeight": 700, "color": "#f44336", "mt": 1, "fontSize": "1.5rem"})
     
-    # Trading Style Recommendations at the top
+    # Advanced Metrics Section - Expectancy, Risk-Reward, Streaks
+    st.markdown("---")
+    st.subheader("🎯 Advanced Performance Metrics")
+    
     if len(filtered_tradebook) > 0:
-        sentiment_data = mc.calculate_holding_sentiment(filtered_tradebook)
-        if sentiment_data['recommendation'] and (sentiment_data['best_style'] or sentiment_data['worst_style']):
+        # Calculate advanced metrics
+        expectancy_data = mc.calculate_expectancy(filtered_tradebook)
+        risk_reward_data = mc.calculate_risk_reward_ratio(filtered_tradebook)
+        streaks_data = mc.calculate_consecutive_streaks(filtered_tradebook)
+        
+        # Create three columns for the three metric types
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("#### 💰 Expectancy (₹/Trade)")
+            st.caption("Expected value per trade - must be positive for profitability")
+            
+            # Overall
+            exp_overall = expectancy_data['overall']['expectancy']
+            exp_color = "🟢" if exp_overall > 0 else "🔴"
+            st.metric(
+                "Overall", 
+                f"₹{exp_overall:.2f}",
+                delta=None,
+                help="(Win Rate × Avg Win) - (Loss Rate × Avg Loss)"
+            )
+            
+            # Intraday
+            exp_intraday = expectancy_data['intraday']['expectancy']
+            exp_intraday_color = "🟢" if exp_intraday > 0 else "🔴"
+            st.metric(
+                f"{exp_intraday_color} Intraday", 
+                f"₹{exp_intraday:.2f}",
+                help=f"Avg Win: ₹{expectancy_data['intraday']['avg_win']:.2f} | Avg Loss: ₹{expectancy_data['intraday']['avg_loss']:.2f}"
+            )
+            
+            # Swing
+            exp_swing = expectancy_data['swing']['expectancy']
+            exp_swing_color = "🟢" if exp_swing > 0 else "🔴"
+            st.metric(
+                f"{exp_swing_color} Swing", 
+                f"₹{exp_swing:.2f}",
+                help=f"Avg Win: ₹{expectancy_data['swing']['avg_win']:.2f} | Avg Loss: ₹{expectancy_data['swing']['avg_loss']:.2f}"
+            )
+        
+        with col2:
+            st.markdown("#### ⚖️ Risk-Reward Ratio")
+            st.caption("Avg Win ÷ Avg Loss - higher is better (>1.5 ideal)")
+            
+            # Overall
+            rr_overall = risk_reward_data['overall']['ratio']
+            rr_display = f"{rr_overall:.2f}" if rr_overall != float('inf') else "∞"
+            rr_color = "🟢" if rr_overall > 1.5 else "🟡" if rr_overall > 1.0 else "🔴"
+            st.metric(
+                "Overall", 
+                rr_display,
+                delta=None,
+                help=f"Avg Win: ₹{risk_reward_data['overall']['avg_win']:.2f} | Avg Loss: ₹{risk_reward_data['overall']['avg_loss']:.2f}"
+            )
+            
+            # Intraday
+            rr_intraday = risk_reward_data['intraday']['ratio']
+            rr_intraday_display = f"{rr_intraday:.2f}" if rr_intraday != float('inf') else "∞"
+            rr_intraday_color = "🟢" if rr_intraday > 1.5 else "🟡" if rr_intraday > 1.0 else "🔴"
+            st.metric(
+                f"{rr_intraday_color} Intraday", 
+                rr_intraday_display,
+                help=f"Avg Win: ₹{risk_reward_data['intraday']['avg_win']:.2f} | Avg Loss: ₹{risk_reward_data['intraday']['avg_loss']:.2f}"
+            )
+            
+            # Swing
+            rr_swing = risk_reward_data['swing']['ratio']
+            rr_swing_display = f"{rr_swing:.2f}" if rr_swing != float('inf') else "∞"
+            rr_swing_color = "🟢" if rr_swing > 1.5 else "🟡" if rr_swing > 1.0 else "🔴"
+            st.metric(
+                f"{rr_swing_color} Swing", 
+                rr_swing_display,
+                help=f"Avg Win: ₹{risk_reward_data['swing']['avg_win']:.2f} | Avg Loss: ₹{risk_reward_data['swing']['avg_loss']:.2f}"
+            )
+        
+        with col3:
+            st.markdown("#### 🔥 Consecutive Streaks")
+            st.caption("Longest winning and losing streaks")
+            
+            # Overall
+            st.markdown(f"**Overall**")
+            st.markdown(f"✅ Max Win Streak: **{streaks_data['overall']['max_win_streak']}** trades")
+            st.markdown(f"❌ Max Loss Streak: **{streaks_data['overall']['max_loss_streak']}** trades")
+            st.markdown(f"📊 Current: **{streaks_data['overall']['current_streak']}** ({streaks_data['overall']['current_type']})")
+            
             st.markdown("---")
-            st.markdown("### 💡 Actionable Insights")
-            st.info(sentiment_data['recommendation'])
+            
+            # Intraday
+            st.markdown(f"**Intraday**")
+            st.markdown(f"✅ Win: **{streaks_data['intraday']['max_win_streak']}** | ❌ Loss: **{streaks_data['intraday']['max_loss_streak']}**")
+            
+            # Swing
+            st.markdown(f"**Swing**")
+            st.markdown(f"✅ Win: **{streaks_data['swing']['max_win_streak']}** | ❌ Loss: **{streaks_data['swing']['max_loss_streak']}**")
+        
+    
+    # Performance Trends Section - Time Series Analysis
+    st.markdown("---")
+    st.header("📊 Performance Trends Over Time")
+    st.markdown('<div id="performance-trends"></div>', unsafe_allow_html=True)
+    st.caption("Analyze how your trading metrics have evolved over time to identify improvement or degradation")
+    
+    if len(filtered_tradebook) > 0:
+        # Priority 1: Rolling Expectancy Chart
+        st.subheader("📈 Rolling Expectancy (20-Trade Window)")
+        st.markdown("""
+        This chart shows your **expected profit per trade** calculated over rolling 20-trade windows.
+        - **Above zero line** = profitable system
+        - **Upward trend** = improving performance
+        - **Downward trend** = degrading strategy or changing market conditions
+        """)
+        
+        rolling_exp = mc.calculate_rolling_expectancy(filtered_tradebook, window=20)
+        
+        if len(rolling_exp) > 0:
+            fig_rolling = go.Figure()
+            
+            # Overall expectancy
+            fig_rolling.add_trace(go.Scatter(
+                x=rolling_exp['trade_number'],
+                y=rolling_exp['expectancy_overall'],
+                name='Overall',
+                mode='lines',
+                line=dict(color='#1976d2', width=3),
+                hovertemplate='Trade #%{x}<br>Expectancy: ₹%{y:.2f}<extra></extra>'
+            ))
+            
+            # Intraday expectancy (if available)
+            if rolling_exp['expectancy_intraday'].notna().any():
+                fig_rolling.add_trace(go.Scatter(
+                    x=rolling_exp['trade_number'],
+                    y=rolling_exp['expectancy_intraday'],
+                    name='Intraday',
+                    mode='lines',
+                    line=dict(color='#ff9800', width=2, dash='dot'),
+                    hovertemplate='Trade #%{x}<br>Intraday Expectancy: ₹%{y:.2f}<extra></extra>'
+                ))
+            
+            # Swing expectancy (if available)
+            if rolling_exp['expectancy_swing'].notna().any():
+                fig_rolling.add_trace(go.Scatter(
+                    x=rolling_exp['trade_number'],
+                    y=rolling_exp['expectancy_swing'],
+                    name='Swing',
+                    mode='lines',
+                    line=dict(color='#4caf50', width=2, dash='dash'),
+                    hovertemplate='Trade #%{x}<br>Swing Expectancy: ₹%{y:.2f}<extra></extra>'
+                ))
+            
+            # Zero line
+            fig_rolling.add_hline(y=0, line_dash="solid", line_color="red", 
+                                 annotation_text="Break-even", 
+                                 annotation_position="right")
+            
+            # Set y-axis range with padding for better visibility
+            all_expectancy_values = rolling_exp['expectancy_overall'].dropna().tolist()
+            if rolling_exp['expectancy_intraday'].notna().any():
+                all_expectancy_values.extend(rolling_exp['expectancy_intraday'].dropna().tolist())
+            if rolling_exp['expectancy_swing'].notna().any():
+                all_expectancy_values.extend(rolling_exp['expectancy_swing'].dropna().tolist())
+            
+            if len(all_expectancy_values) > 0:
+                y_min = min(all_expectancy_values)
+                y_max = max(all_expectancy_values)
+                y_range = y_max - y_min
+                # Add 30% padding on each side
+                y_axis_min = y_min - (y_range * 0.3) if y_range > 0 else y_min - 100
+                y_axis_max = y_max + (y_range * 0.3) if y_range > 0 else y_max + 100
+            else:
+                y_axis_min = None
+                y_axis_max = None
+            
+            fig_rolling.update_layout(
+                title='Rolling 20-Trade Expectancy',
+                xaxis_title='Trade Number',
+                yaxis_title='Expectancy (₹)',
+                yaxis=dict(range=[y_axis_min, y_axis_max]) if y_axis_min is not None else {},
+                hovermode='x unified',
+                showlegend=True,
+                height=550,
+                template='plotly_white'
+            )
+            
+            st.plotly_chart(fig_rolling, use_container_width=True)
+            
+            # Insights
+            current_exp = rolling_exp.iloc[-1]['expectancy_overall']
+            first_exp = rolling_exp.iloc[0]['expectancy_overall']
+            trend = "improving" if current_exp > first_exp else "declining"
+            trend_icon = "📈" if current_exp > first_exp else "📉"
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Current 20-Trade Expectancy", f"₹{current_exp:.2f}")
+            with col2:
+                st.metric("Initial 20-Trade Expectancy", f"₹{first_exp:.2f}")
+            with col3:
+                delta = current_exp - first_exp
+                st.metric("Trend", f"{trend_icon} {trend.capitalize()}", delta=f"₹{delta:.2f}")
+        else:
+            st.info("Need at least 20 completed trades to show rolling expectancy. Keep trading!")
+        
+        st.markdown("---")
+        
+        # Priority 2: Monthly Expectancy Comparison
+        st.subheader("📅 Monthly Expectancy Comparison")
+        st.markdown("""
+        Compare your **Intraday vs Swing** performance month by month.
+        - Identify which months you perform best
+        - Spot seasonal patterns
+        - See if you're consistently improving
+        """)
+        
+        monthly_exp = mc.calculate_monthly_expectancy(filtered_tradebook)
+        
+        if len(monthly_exp) > 0:
+            fig_monthly = go.Figure()
+            
+            # Intraday bars
+            intraday_data = monthly_exp[monthly_exp['expectancy_intraday'].notna()]
+            if len(intraday_data) > 0:
+                fig_monthly.add_trace(go.Bar(
+                    x=intraday_data['month'],
+                    y=intraday_data['expectancy_intraday'],
+                    name='Intraday',
+                    marker_color='#ff9800',
+                    hovertemplate='%{x|%b %Y}<br>Intraday: ₹%{y:.2f}<br>Trades: ' + 
+                                 intraday_data['trade_count_intraday'].astype(str) + '<extra></extra>'
+                ))
+            
+            # Swing bars
+            swing_data = monthly_exp[monthly_exp['expectancy_swing'].notna()]
+            if len(swing_data) > 0:
+                fig_monthly.add_trace(go.Bar(
+                    x=swing_data['month'],
+                    y=swing_data['expectancy_swing'],
+                    name='Swing',
+                    marker_color='#4caf50',
+                    hovertemplate='%{x|%b %Y}<br>Swing: ₹%{y:.2f}<br>Trades: ' + 
+                                 swing_data['trade_count_swing'].astype(str) + '<extra></extra>'
+                ))
+            
+            # Overall line
+            fig_monthly.add_trace(go.Scatter(
+                x=monthly_exp['month'],
+                y=monthly_exp['expectancy_overall'],
+                name='Overall',
+                mode='lines+markers',
+                line=dict(color='#1976d2', width=3),
+                marker=dict(size=8),
+                hovertemplate='%{x|%b %Y}<br>Overall: ₹%{y:.2f}<extra></extra>'
+            ))
+            
+            # Zero line
+            fig_monthly.add_hline(y=0, line_dash="solid", line_color="red", 
+                                 annotation_text="Break-even")
+            
+            fig_monthly.update_layout(
+                title='Monthly Expectancy: Intraday vs Swing',
+                xaxis_title='Month',
+                yaxis_title='Expectancy (₹)',
+                barmode='group',
+                hovermode='x unified',
+                showlegend=True,
+                height=500,
+                template='plotly_white'
+            )
+            
+            st.plotly_chart(fig_monthly, use_container_width=True)
+            
+            # Monthly insights
+            best_month = monthly_exp.loc[monthly_exp['expectancy_overall'].idxmax()]
+            worst_month = monthly_exp.loc[monthly_exp['expectancy_overall'].idxmin()]
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.success(f"🏆 **Best Month**: {best_month['month'].strftime('%B %Y')} (₹{best_month['expectancy_overall']:.2f})")
+            with col2:
+                st.error(f"📉 **Worst Month**: {worst_month['month'].strftime('%B %Y')} (₹{worst_month['expectancy_overall']:.2f})")
+        else:
+            st.info("No monthly data available yet.")
+        
+        st.markdown("---")
+        
+        # Priority 3: Cumulative Metrics Dashboard
+        st.subheader("📊 Cumulative Performance Evolution")
+        st.markdown("""
+        Watch how your metrics **stabilize over time** as you accumulate more trades.
+        Shows your **learning curve** and overall trajectory.
+        """)
+        
+        cumulative_metrics = mc.calculate_cumulative_metrics(filtered_tradebook)
+        
+        if len(cumulative_metrics) > 0:
+            # Create 2x2 grid of charts
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Cumulative Win Rate
+                fig_wr = go.Figure()
+                fig_wr.add_trace(go.Scatter(
+                    x=cumulative_metrics['trade_number'],
+                    y=cumulative_metrics['win_rate'],
+                    mode='lines',
+                    line=dict(color='#2196f3', width=2),
+                    fill='tozeroy',
+                    fillcolor='rgba(33, 150, 243, 0.1)',
+                    hovertemplate='Trade #%{x}<br>Win Rate: %{y:.1f}%<extra></extra>'
+                ))
+                fig_wr.add_hline(y=50, line_dash="dash", line_color="gray", 
+                                annotation_text="50%")
+                
+                # Set y-axis range for better visibility (0-100% with padding)
+                wr_values = cumulative_metrics['win_rate'].dropna().tolist()
+                if len(wr_values) > 0:
+                    wr_min = max(0, min(wr_values) - 10)
+                    wr_max = min(100, max(wr_values) + 10)
+                    y_axis_range = [wr_min, wr_max]
+                else:
+                    y_axis_range = [0, 100]
+                
+                fig_wr.update_layout(
+                    title='Cumulative Win Rate',
+                    xaxis_title='Trade Number',
+                    yaxis_title='Win Rate (%)',
+                    yaxis=dict(range=y_axis_range),
+                    height=400,
+                    template='plotly_white',
+                    showlegend=False
+                )
+                st.plotly_chart(fig_wr, use_container_width=True)
+            
+            with col2:
+                # Cumulative Profit Factor
+                fig_pf = go.Figure()
+                pf_data = cumulative_metrics[cumulative_metrics['profit_factor'].notna()].copy()
+                
+                # Cap extreme values for better visualization (display max 5)
+                pf_data['profit_factor_display'] = pf_data['profit_factor'].clip(upper=5)
+                
+                fig_pf.add_trace(go.Scatter(
+                    x=pf_data['trade_number'],
+                    y=pf_data['profit_factor_display'],
+                    mode='lines',
+                    line=dict(color='#9c27b0', width=2),
+                    fill='tozeroy',
+                    fillcolor='rgba(156, 39, 176, 0.1)',
+                    customdata=pf_data['profit_factor'],
+                    hovertemplate='Trade #%{x}<br>Profit Factor: %{customdata:.2f}<extra></extra>'
+                ))
+                fig_pf.add_hline(y=1.0, line_dash="dash", line_color="red", 
+                                annotation_text="Break-even", annotation_position="right")
+                fig_pf.add_hline(y=2.0, line_dash="dash", line_color="green", 
+                                annotation_text="Good (2.0)", annotation_position="right")
+                fig_pf.update_layout(
+                    title='Cumulative Profit Factor (capped at 5 for visibility)',
+                    xaxis_title='Trade Number',
+                    yaxis_title='Profit Factor',
+                    yaxis=dict(range=[0, 5]),
+                    height=400,
+                    template='plotly_white',
+                    showlegend=False
+                )
+                st.plotly_chart(fig_pf, use_container_width=True)
+            
+            col3, col4 = st.columns(2)
+            
+            with col3:
+                # Cumulative Risk-Reward
+                fig_rr = go.Figure()
+                rr_data = cumulative_metrics[cumulative_metrics['risk_reward'].notna()].copy()
+                
+                # Filter extreme outliers for better visualization (cap at 5 for display)
+                rr_data['risk_reward_display'] = rr_data['risk_reward'].clip(upper=5)
+                
+                fig_rr.add_trace(go.Scatter(
+                    x=rr_data['trade_number'],
+                    y=rr_data['risk_reward_display'],
+                    mode='lines',
+                    line=dict(color='#ff5722', width=2),
+                    fill='tozeroy',
+                    fillcolor='rgba(255, 87, 34, 0.1)',
+                    customdata=rr_data['risk_reward'],
+                    hovertemplate='Trade #%{x}<br>R:R Ratio: %{customdata:.2f}<extra></extra>'
+                ))
+                fig_rr.add_hline(y=1.0, line_dash="dash", line_color="red", 
+                                annotation_text="1:1", annotation_position="right")
+                fig_rr.add_hline(y=1.5, line_dash="dash", line_color="green", 
+                                annotation_text="Ideal (1.5)", annotation_position="right")
+                
+                # Set y-axis range with sensible limits (0 to 5)
+                rr_values = rr_data['risk_reward_display'].tolist()
+                if len(rr_values) > 0:
+                    rr_min = 0
+                    rr_max = min(5, max(rr_values) * 1.1)  # Cap at 5 maximum
+                    y_axis_range = [rr_min, max(rr_max, 2.0)]  # At least show up to 2.0
+                else:
+                    y_axis_range = [0, 3]
+                
+                fig_rr.update_layout(
+                    title='Cumulative Risk-Reward Ratio (capped at 5 for visibility)',
+                    xaxis_title='Trade Number',
+                    yaxis_title='R:R Ratio',
+                    yaxis=dict(range=y_axis_range),
+                    height=400,
+                    template='plotly_white',
+                    showlegend=False
+                )
+                st.plotly_chart(fig_rr, use_container_width=True)
+            
+            with col4:
+                # Cumulative Expectancy
+                fig_exp = go.Figure()
+                fig_exp.add_trace(go.Scatter(
+                    x=cumulative_metrics['trade_number'],
+                    y=cumulative_metrics['expectancy'],
+                    mode='lines',
+                    line=dict(color='#4caf50', width=2),
+                    fill='tozeroy',
+                    fillcolor='rgba(76, 175, 80, 0.1)',
+                    hovertemplate='Trade #%{x}<br>Expectancy: ₹%{y:.2f}<extra></extra>'
+                ))
+                fig_exp.add_hline(y=0, line_dash="solid", line_color="red", 
+                                 annotation_text="Break-even")
+                
+                # Set y-axis range with padding for better visibility
+                exp_values = cumulative_metrics['expectancy'].dropna().tolist()
+                if len(exp_values) > 0:
+                    exp_min = min(exp_values)
+                    exp_max = max(exp_values)
+                    exp_range = exp_max - exp_min
+                    # Add 30% padding on each side
+                    y_axis_min = exp_min - (exp_range * 0.3) if exp_range > 0 else exp_min - 50
+                    y_axis_max = exp_max + (exp_range * 0.3) if exp_range > 0 else exp_max + 50
+                else:
+                    y_axis_min = -100
+                    y_axis_max = 100
+                
+                fig_exp.update_layout(
+                    title='Cumulative Expectancy',
+                    xaxis_title='Trade Number',
+                    yaxis_title='Expectancy (₹)',
+                    yaxis=dict(range=[y_axis_min, y_axis_max]),
+                    height=400,
+                    template='plotly_white',
+                    showlegend=False
+                )
+                st.plotly_chart(fig_exp, use_container_width=True)
+            
+            # Final metrics summary
+            final = cumulative_metrics.iloc[-1]
+            st.markdown("### 📋 Current Cumulative Metrics")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Win Rate", f"{final['win_rate']:.1f}%")
+            with col2:
+                pf_display = f"{final['profit_factor']:.2f}" if pd.notna(final['profit_factor']) else "N/A"
+                st.metric("Profit Factor", pf_display)
+            with col3:
+                rr_display = f"{final['risk_reward']:.2f}" if pd.notna(final['risk_reward']) else "N/A"
+                st.metric("Risk-Reward", rr_display)
+            with col4:
+                st.metric("Expectancy", f"₹{final['expectancy']:.2f}")
+        else:
+            st.info("No cumulative data available yet.")
     
     # Section 2: P&L Analysis
     st.markdown("---")

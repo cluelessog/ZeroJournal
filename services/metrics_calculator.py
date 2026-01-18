@@ -957,3 +957,576 @@ def calculate_holding_sentiment(trades):
         'best_style': best_style,
         'worst_style': worst_style
     }
+
+
+def calculate_expectancy(trades):
+    """
+    Calculate expectancy (expected value per trade) for Intraday and Swing separately.
+    Expectancy = (Win Rate × Avg Win) - (Loss Rate × Avg Loss)
+    
+    Args:
+        trades: DataFrame with tradebook data
+        
+    Returns:
+        dict: {
+            'intraday': {'expectancy': float, 'avg_win': float, 'avg_loss': float},
+            'swing': {'expectancy': float, 'avg_win': float, 'avg_loss': float},
+            'overall': {'expectancy': float, 'avg_win': float, 'avg_loss': float}
+        }
+    """
+    if trades is None or len(trades) == 0:
+        return {
+            'intraday': {'expectancy': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0},
+            'swing': {'expectancy': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0},
+            'overall': {'expectancy': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0}
+        }
+    
+    # Get matched trades with P&L
+    trade_matches = match_trades_with_pnl(trades)
+    
+    if len(trade_matches) == 0:
+        return {
+            'intraday': {'expectancy': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0},
+            'swing': {'expectancy': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0},
+            'overall': {'expectancy': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0}
+        }
+    
+    # Separate intraday and swing trades
+    intraday_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days == 0]
+    swing_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days > 0]
+    
+    def calc_expectancy_for_trades(trade_list):
+        if len(trade_list) == 0:
+            return {'expectancy': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0, 'win_rate': 0.0, 'loss_rate': 0.0}
+        
+        wins = [pnl for _, pnl, _ in trade_list if pnl > 0]
+        losses = [pnl for _, pnl, _ in trade_list if pnl < 0]
+        
+        total_trades = len(trade_list)
+        win_count = len(wins)
+        loss_count = len(losses)
+        
+        win_rate = win_count / total_trades if total_trades > 0 else 0.0
+        loss_rate = loss_count / total_trades if total_trades > 0 else 0.0
+        
+        avg_win = sum(wins) / win_count if win_count > 0 else 0.0
+        avg_loss = abs(sum(losses) / loss_count) if loss_count > 0 else 0.0
+        
+        # Expectancy = (Win Rate × Avg Win) - (Loss Rate × Avg Loss)
+        expectancy = (win_rate * avg_win) - (loss_rate * avg_loss)
+        
+        return {
+            'expectancy': expectancy,
+            'avg_win': avg_win,
+            'avg_loss': avg_loss,
+            'win_rate': win_rate * 100,
+            'loss_rate': loss_rate * 100
+        }
+    
+    return {
+        'intraday': calc_expectancy_for_trades(intraday_trades),
+        'swing': calc_expectancy_for_trades(swing_trades),
+        'overall': calc_expectancy_for_trades(trade_matches)
+    }
+
+
+def calculate_risk_reward_ratio(trades):
+    """
+    Calculate Risk-Reward Ratio (Average Win / Average Loss) for Intraday and Swing separately.
+    
+    Args:
+        trades: DataFrame with tradebook data
+        
+    Returns:
+        dict: {
+            'intraday': {'ratio': float, 'avg_win': float, 'avg_loss': float},
+            'swing': {'ratio': float, 'avg_win': float, 'avg_loss': float},
+            'overall': {'ratio': float, 'avg_win': float, 'avg_loss': float}
+        }
+    """
+    if trades is None or len(trades) == 0:
+        return {
+            'intraday': {'ratio': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0},
+            'swing': {'ratio': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0},
+            'overall': {'ratio': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0}
+        }
+    
+    # Get matched trades with P&L
+    trade_matches = match_trades_with_pnl(trades)
+    
+    if len(trade_matches) == 0:
+        return {
+            'intraday': {'ratio': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0},
+            'swing': {'ratio': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0},
+            'overall': {'ratio': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0}
+        }
+    
+    # Separate intraday and swing trades
+    intraday_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days == 0]
+    swing_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days > 0]
+    
+    def calc_rr_for_trades(trade_list):
+        if len(trade_list) == 0:
+            return {'ratio': 0.0, 'avg_win': 0.0, 'avg_loss': 0.0}
+        
+        wins = [pnl for _, pnl, _ in trade_list if pnl > 0]
+        losses = [pnl for _, pnl, _ in trade_list if pnl < 0]
+        
+        avg_win = sum(wins) / len(wins) if len(wins) > 0 else 0.0
+        avg_loss = abs(sum(losses) / len(losses)) if len(losses) > 0 else 0.0
+        
+        # Risk-Reward Ratio = Avg Win / Avg Loss
+        ratio = avg_win / avg_loss if avg_loss > 0 else float('inf') if avg_win > 0 else 0.0
+        
+        return {
+            'ratio': ratio,
+            'avg_win': avg_win,
+            'avg_loss': avg_loss
+        }
+    
+    return {
+        'intraday': calc_rr_for_trades(intraday_trades),
+        'swing': calc_rr_for_trades(swing_trades),
+        'overall': calc_rr_for_trades(trade_matches)
+    }
+
+
+def calculate_consecutive_streaks(trades):
+    """
+    Calculate longest consecutive winning and losing streaks for Intraday and Swing separately.
+    
+    Args:
+        trades: DataFrame with tradebook data
+        
+    Returns:
+        dict: {
+            'intraday': {'max_win_streak': int, 'max_loss_streak': int, 'current_streak': int, 'current_type': str},
+            'swing': {'max_win_streak': int, 'max_loss_streak': int, 'current_streak': int, 'current_type': str},
+            'overall': {'max_win_streak': int, 'max_loss_streak': int, 'current_streak': int, 'current_type': str}
+        }
+    """
+    if trades is None or len(trades) == 0:
+        return {
+            'intraday': {'max_win_streak': 0, 'max_loss_streak': 0, 'current_streak': 0, 'current_type': 'None'},
+            'swing': {'max_win_streak': 0, 'max_loss_streak': 0, 'current_streak': 0, 'current_type': 'None'},
+            'overall': {'max_win_streak': 0, 'max_loss_streak': 0, 'current_streak': 0, 'current_type': 'None'}
+        }
+    
+    # Get matched trades with P&L
+    trade_matches = match_trades_with_pnl(trades)
+    
+    if len(trade_matches) == 0:
+        return {
+            'intraday': {'max_win_streak': 0, 'max_loss_streak': 0, 'current_streak': 0, 'current_type': 'None'},
+            'swing': {'max_win_streak': 0, 'max_loss_streak': 0, 'current_streak': 0, 'current_type': 'None'},
+            'overall': {'max_win_streak': 0, 'max_loss_streak': 0, 'current_streak': 0, 'current_type': 'None'}
+        }
+    
+    # Separate intraday and swing trades
+    intraday_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days == 0]
+    swing_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days > 0]
+    
+    def calc_streaks_for_trades(trade_list):
+        if len(trade_list) == 0:
+            return {'max_win_streak': 0, 'max_loss_streak': 0, 'current_streak': 0, 'current_type': 'None'}
+        
+        max_win_streak = 0
+        max_loss_streak = 0
+        current_streak = 0
+        current_type = None
+        
+        for _, pnl, _ in trade_list:
+            if pnl > 0:  # Win
+                if current_type == 'win':
+                    current_streak += 1
+                else:
+                    current_streak = 1
+                    current_type = 'win'
+                max_win_streak = max(max_win_streak, current_streak)
+            elif pnl < 0:  # Loss
+                if current_type == 'loss':
+                    current_streak += 1
+                else:
+                    current_streak = 1
+                    current_type = 'loss'
+                max_loss_streak = max(max_loss_streak, current_streak)
+            # Ignore breakeven trades (pnl == 0)
+        
+        # Current streak info
+        current_streak_type = current_type.capitalize() if current_type else 'None'
+        
+        return {
+            'max_win_streak': max_win_streak,
+            'max_loss_streak': max_loss_streak,
+            'current_streak': current_streak,
+            'current_type': current_streak_type
+        }
+    
+    return {
+        'intraday': calc_streaks_for_trades(intraday_trades),
+        'swing': calc_streaks_for_trades(swing_trades),
+        'overall': calc_streaks_for_trades(trade_matches)
+    }
+
+
+def calculate_rolling_expectancy(trades, window=20):
+    """
+    Calculate rolling expectancy over time with a sliding window.
+    
+    Args:
+        trades: DataFrame with tradebook data
+        window: Number of trades in rolling window (default 20)
+        
+    Returns:
+        DataFrame with columns: ['trade_number', 'date', 'expectancy_overall', 
+                                 'expectancy_intraday', 'expectancy_swing']
+    """
+    if trades is None or len(trades) == 0:
+        return pd.DataFrame(columns=['trade_number', 'date', 'expectancy_overall', 
+                                     'expectancy_intraday', 'expectancy_swing'])
+    
+    # Get matched trades with P&L and dates
+    trade_matches = []
+    
+    # Group trades by symbol to track dates
+    for symbol in trades['Symbol'].unique():
+        symbol_trades = trades[trades['Symbol'] == symbol].copy()
+        
+        # Sort by Trade Date and Order Execution Time for proper FIFO matching
+        if 'Order Execution Time' in symbol_trades.columns:
+            symbol_trades['ExecTime'] = pd.to_datetime(
+                symbol_trades['Order Execution Time'], 
+                errors='coerce'
+            )
+            symbol_trades = symbol_trades.sort_values(
+                ['Trade Date', 'ExecTime', 'Trade ID'],
+                na_position='last'
+            )
+        else:
+            symbol_trades = symbol_trades.sort_values(['Trade Date', 'Trade ID'])
+        
+        buy_queue = []
+        
+        for _, trade in symbol_trades.iterrows():
+            trade_date = trade['Trade Date']
+            quantity = trade['Quantity']
+            price = trade['Price']
+            
+            if pd.isna(trade_date) or pd.isna(quantity) or pd.isna(price):
+                continue
+                
+            if trade['Trade Type'] == 'buy':
+                buy_queue.append({
+                    'date': trade_date,
+                    'quantity': quantity,
+                    'price': price
+                })
+            elif trade['Trade Type'] == 'sell' and len(buy_queue) > 0:
+                remaining_sell = quantity
+                sell_price = price
+                
+                while remaining_sell > 0 and len(buy_queue) > 0:
+                    buy = buy_queue[0]
+                    buy_date = buy['date']
+                    buy_price = buy['price']
+                    
+                    holding_days = (trade_date - buy_date).days
+                    
+                    if holding_days < 0:
+                        buy_queue.pop(0)
+                        continue
+                    
+                    if buy['quantity'] <= remaining_sell:
+                        matched_qty = buy['quantity']
+                        pnl = (sell_price - buy_price) * matched_qty
+                        trade_matches.append({
+                            'date': trade_date,
+                            'holding_days': holding_days,
+                            'pnl': pnl,
+                            'qty': matched_qty
+                        })
+                        remaining_sell -= matched_qty
+                        buy_queue.pop(0)
+                    else:
+                        matched_qty = remaining_sell
+                        pnl = (sell_price - buy_price) * matched_qty
+                        trade_matches.append({
+                            'date': trade_date,
+                            'holding_days': holding_days,
+                            'pnl': pnl,
+                            'qty': matched_qty
+                        })
+                        buy['quantity'] -= matched_qty
+                        remaining_sell = 0
+    
+    if len(trade_matches) < window:
+        return pd.DataFrame(columns=['trade_number', 'date', 'expectancy_overall', 
+                                     'expectancy_intraday', 'expectancy_swing'])
+    
+    # Sort by date
+    trade_matches_df = pd.DataFrame(trade_matches).sort_values('date')
+    
+    # Calculate rolling expectancy
+    rolling_data = []
+    
+    for i in range(window, len(trade_matches) + 1):
+        window_trades = trade_matches[i-window:i]
+        
+        # Overall expectancy for window
+        wins = [t['pnl'] for t in window_trades if t['pnl'] > 0]
+        losses = [t['pnl'] for t in window_trades if t['pnl'] < 0]
+        
+        win_rate = len(wins) / len(window_trades) if len(window_trades) > 0 else 0
+        loss_rate = len(losses) / len(window_trades) if len(window_trades) > 0 else 0
+        avg_win = sum(wins) / len(wins) if len(wins) > 0 else 0
+        avg_loss = abs(sum(losses) / len(losses)) if len(losses) > 0 else 0
+        expectancy_overall = (win_rate * avg_win) - (loss_rate * avg_loss)
+        
+        # Intraday expectancy for window
+        intraday_window = [t for t in window_trades if t['holding_days'] == 0]
+        if len(intraday_window) > 0:
+            wins_id = [t['pnl'] for t in intraday_window if t['pnl'] > 0]
+            losses_id = [t['pnl'] for t in intraday_window if t['pnl'] < 0]
+            win_rate_id = len(wins_id) / len(intraday_window)
+            loss_rate_id = len(losses_id) / len(intraday_window)
+            avg_win_id = sum(wins_id) / len(wins_id) if len(wins_id) > 0 else 0
+            avg_loss_id = abs(sum(losses_id) / len(losses_id)) if len(losses_id) > 0 else 0
+            expectancy_intraday = (win_rate_id * avg_win_id) - (loss_rate_id * avg_loss_id)
+        else:
+            expectancy_intraday = None
+        
+        # Swing expectancy for window
+        swing_window = [t for t in window_trades if t['holding_days'] > 0]
+        if len(swing_window) > 0:
+            wins_sw = [t['pnl'] for t in swing_window if t['pnl'] > 0]
+            losses_sw = [t['pnl'] for t in swing_window if t['pnl'] < 0]
+            win_rate_sw = len(wins_sw) / len(swing_window)
+            loss_rate_sw = len(losses_sw) / len(swing_window)
+            avg_win_sw = sum(wins_sw) / len(wins_sw) if len(wins_sw) > 0 else 0
+            avg_loss_sw = abs(sum(losses_sw) / len(losses_sw)) if len(losses_sw) > 0 else 0
+            expectancy_swing = (win_rate_sw * avg_win_sw) - (loss_rate_sw * avg_loss_sw)
+        else:
+            expectancy_swing = None
+        
+        rolling_data.append({
+            'trade_number': i,
+            'date': window_trades[-1]['date'],
+            'expectancy_overall': expectancy_overall,
+            'expectancy_intraday': expectancy_intraday,
+            'expectancy_swing': expectancy_swing
+        })
+    
+    return pd.DataFrame(rolling_data)
+
+
+def calculate_monthly_expectancy(trades):
+    """
+    Calculate expectancy grouped by month for Intraday and Swing separately.
+    
+    Args:
+        trades: DataFrame with tradebook data
+        
+    Returns:
+        DataFrame with columns: ['month', 'expectancy_overall', 'expectancy_intraday', 
+                                 'expectancy_swing', 'trade_count_overall', 
+                                 'trade_count_intraday', 'trade_count_swing']
+    """
+    if trades is None or len(trades) == 0:
+        return pd.DataFrame(columns=['month', 'expectancy_overall', 'expectancy_intraday', 
+                                     'expectancy_swing', 'trade_count_overall',
+                                     'trade_count_intraday', 'trade_count_swing'])
+    
+    # Get matched trades with P&L and dates
+    trade_matches = []
+    
+    for symbol in trades['Symbol'].unique():
+        symbol_trades = trades[trades['Symbol'] == symbol].copy()
+        
+        if 'Order Execution Time' in symbol_trades.columns:
+            symbol_trades['ExecTime'] = pd.to_datetime(
+                symbol_trades['Order Execution Time'], 
+                errors='coerce'
+            )
+            symbol_trades = symbol_trades.sort_values(
+                ['Trade Date', 'ExecTime', 'Trade ID'],
+                na_position='last'
+            )
+        else:
+            symbol_trades = symbol_trades.sort_values(['Trade Date', 'Trade ID'])
+        
+        buy_queue = []
+        
+        for _, trade in symbol_trades.iterrows():
+            trade_date = trade['Trade Date']
+            quantity = trade['Quantity']
+            price = trade['Price']
+            
+            if pd.isna(trade_date) or pd.isna(quantity) or pd.isna(price):
+                continue
+                
+            if trade['Trade Type'] == 'buy':
+                buy_queue.append({
+                    'date': trade_date,
+                    'quantity': quantity,
+                    'price': price
+                })
+            elif trade['Trade Type'] == 'sell' and len(buy_queue) > 0:
+                remaining_sell = quantity
+                sell_price = price
+                
+                while remaining_sell > 0 and len(buy_queue) > 0:
+                    buy = buy_queue[0]
+                    buy_date = buy['date']
+                    buy_price = buy['price']
+                    
+                    holding_days = (trade_date - buy_date).days
+                    
+                    if holding_days < 0:
+                        buy_queue.pop(0)
+                        continue
+                    
+                    if buy['quantity'] <= remaining_sell:
+                        matched_qty = buy['quantity']
+                        pnl = (sell_price - buy_price) * matched_qty
+                        trade_matches.append({
+                            'date': trade_date,
+                            'month': trade_date.to_period('M'),
+                            'holding_days': holding_days,
+                            'pnl': pnl
+                        })
+                        remaining_sell -= matched_qty
+                        buy_queue.pop(0)
+                    else:
+                        matched_qty = remaining_sell
+                        pnl = (sell_price - buy_price) * matched_qty
+                        trade_matches.append({
+                            'date': trade_date,
+                            'month': trade_date.to_period('M'),
+                            'holding_days': holding_days,
+                            'pnl': pnl
+                        })
+                        buy['quantity'] -= matched_qty
+                        remaining_sell = 0
+    
+    if len(trade_matches) == 0:
+        return pd.DataFrame(columns=['month', 'expectancy_overall', 'expectancy_intraday', 
+                                     'expectancy_swing', 'trade_count_overall',
+                                     'trade_count_intraday', 'trade_count_swing'])
+    
+    # Group by month
+    df = pd.DataFrame(trade_matches)
+    monthly_data = []
+    
+    for month in df['month'].unique():
+        month_trades = df[df['month'] == month]
+        
+        # Overall
+        wins = month_trades[month_trades['pnl'] > 0]['pnl']
+        losses = month_trades[month_trades['pnl'] < 0]['pnl']
+        win_rate = len(wins) / len(month_trades)
+        loss_rate = len(losses) / len(month_trades)
+        avg_win = wins.mean() if len(wins) > 0 else 0
+        avg_loss = abs(losses.mean()) if len(losses) > 0 else 0
+        expectancy_overall = (win_rate * avg_win) - (loss_rate * avg_loss)
+        
+        # Intraday
+        intraday = month_trades[month_trades['holding_days'] == 0]
+        if len(intraday) > 0:
+            wins_id = intraday[intraday['pnl'] > 0]['pnl']
+            losses_id = intraday[intraday['pnl'] < 0]['pnl']
+            win_rate_id = len(wins_id) / len(intraday)
+            loss_rate_id = len(losses_id) / len(intraday)
+            avg_win_id = wins_id.mean() if len(wins_id) > 0 else 0
+            avg_loss_id = abs(losses_id.mean()) if len(losses_id) > 0 else 0
+            expectancy_intraday = (win_rate_id * avg_win_id) - (loss_rate_id * avg_loss_id)
+            count_intraday = len(intraday)
+        else:
+            expectancy_intraday = None
+            count_intraday = 0
+        
+        # Swing
+        swing = month_trades[month_trades['holding_days'] > 0]
+        if len(swing) > 0:
+            wins_sw = swing[swing['pnl'] > 0]['pnl']
+            losses_sw = swing[swing['pnl'] < 0]['pnl']
+            win_rate_sw = len(wins_sw) / len(swing)
+            loss_rate_sw = len(losses_sw) / len(swing)
+            avg_win_sw = wins_sw.mean() if len(wins_sw) > 0 else 0
+            avg_loss_sw = abs(losses_sw.mean()) if len(losses_sw) > 0 else 0
+            expectancy_swing = (win_rate_sw * avg_win_sw) - (loss_rate_sw * avg_loss_sw)
+            count_swing = len(swing)
+        else:
+            expectancy_swing = None
+            count_swing = 0
+        
+        monthly_data.append({
+            'month': month.to_timestamp(),
+            'expectancy_overall': expectancy_overall,
+            'expectancy_intraday': expectancy_intraday,
+            'expectancy_swing': expectancy_swing,
+            'trade_count_overall': len(month_trades),
+            'trade_count_intraday': count_intraday,
+            'trade_count_swing': count_swing
+        })
+    
+    result = pd.DataFrame(monthly_data).sort_values('month')
+    return result
+
+
+def calculate_cumulative_metrics(trades):
+    """
+    Calculate cumulative metrics as trades accumulate over time.
+    Shows evolution of win rate, profit factor, risk-reward, and expectancy.
+    
+    Args:
+        trades: DataFrame with tradebook data
+        
+    Returns:
+        DataFrame with columns: ['trade_number', 'date', 'win_rate', 'profit_factor', 
+                                 'risk_reward', 'expectancy']
+    """
+    if trades is None or len(trades) == 0:
+        return pd.DataFrame(columns=['trade_number', 'date', 'win_rate', 'profit_factor',
+                                     'risk_reward', 'expectancy'])
+    
+    # Get matched trades with P&L
+    trade_matches = match_trades_with_pnl(trades)
+    
+    if len(trade_matches) == 0:
+        return pd.DataFrame(columns=['trade_number', 'date', 'win_rate', 'profit_factor',
+                                     'risk_reward', 'expectancy'])
+    
+    cumulative_data = []
+    
+    for i in range(1, len(trade_matches) + 1):
+        subset = trade_matches[:i]
+        
+        # Win Rate
+        wins = [pnl for _, pnl, _ in subset if pnl > 0]
+        losses = [pnl for _, pnl, _ in subset if pnl < 0]
+        win_rate = (len(wins) / i) * 100
+        
+        # Profit Factor
+        gross_profit = sum(wins) if len(wins) > 0 else 0
+        gross_loss = abs(sum(losses)) if len(losses) > 0 else 0
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else (float('inf') if gross_profit > 0 else 0)
+        
+        # Risk-Reward Ratio
+        avg_win = sum(wins) / len(wins) if len(wins) > 0 else 0
+        avg_loss = abs(sum(losses) / len(losses)) if len(losses) > 0 else 0
+        risk_reward = avg_win / avg_loss if avg_loss > 0 else (float('inf') if avg_win > 0 else 0)
+        
+        # Expectancy
+        win_rate_decimal = len(wins) / i
+        loss_rate_decimal = len(losses) / i
+        expectancy = (win_rate_decimal * avg_win) - (loss_rate_decimal * avg_loss)
+        
+        cumulative_data.append({
+            'trade_number': i,
+            'win_rate': win_rate,
+            'profit_factor': profit_factor if profit_factor != float('inf') else None,
+            'risk_reward': risk_reward if risk_reward != float('inf') else None,
+            'expectancy': expectancy
+        })
+    
+    return pd.DataFrame(cumulative_data)
