@@ -882,7 +882,11 @@ def calculate_holding_sentiment(trades):
     btst_metrics = calc_metrics(btst_trades)
     velocity_metrics = calc_metrics(velocity_trades)
     swing_metrics = calc_metrics(swing_trades)
-    pure_swing_metrics = calc_metrics(pure_swing_trades)
+    
+    # Pure Swing is the aggregate of BTST + Velocity + Swing (all >0 day trades)
+    # Calculate by combining the three categories
+    all_non_intraday = btst_trades + velocity_trades + swing_trades
+    pure_swing_metrics = calc_metrics(all_non_intraday)
     
     # Determine best and worst performing styles (only if enough trades)
     styles = []
