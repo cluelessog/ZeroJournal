@@ -899,22 +899,30 @@ if filtered_tradebook is not None and filtered_pnl is not None:
         st.session_state.charge_allocation_ratio = (filtered_turnover / total_turnover * 100) if total_turnover > 0 else 0
     
     # Calculate metrics (safely handle empty dataframes)
-    # Use FIFO-matched trades for consistent win rate calculation
+    # Use FIFO-matched trades for consistent win rate and profit factor calculation
     if has_tradebook_data:
-        # Get matched trades for win rate calculation
+        # Get matched trades for win rate and profit factor calculation
         matched_trades = mc.match_trades_with_pnl(filtered_tradebook)
         if len(matched_trades) > 0:
             wins = sum(1 for _, pnl, _ in matched_trades if pnl > 0)
             win_rate = (wins / len(matched_trades)) * 100
+            
+            # Calculate profit factor from matched trades (not aggregated P&L)
+            winning_trades = [pnl for _, pnl, _ in matched_trades if pnl > 0]
+            losing_trades = [pnl for _, pnl, _ in matched_trades if pnl < 0]
+            
+            gross_profit = sum(winning_trades) if len(winning_trades) > 0 else 0
+            gross_loss = abs(sum(losing_trades)) if len(losing_trades) > 0 else 0
+            
+            if gross_loss > 0:
+                profit_factor = gross_profit / gross_loss
+            else:
+                profit_factor = float('inf') if gross_profit > 0 else 0.0
         else:
             win_rate = 0.0
+            profit_factor = 0.0
     else:
         win_rate = 0.0
-    
-    # Profit factor still from P&L data (aggregated is fine for this metric)
-    if has_pnl_data:
-        profit_factor = mc.calculate_profit_factor(filtered_pnl)
-    else:
         profit_factor = 0.0
     
     if has_tradebook_data:
