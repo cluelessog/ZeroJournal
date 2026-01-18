@@ -1,7 +1,7 @@
 """
 ZeroJournal - Trading Dashboard for Swing Traders
 Main Streamlit application
-Version: 1.3.0
+Version: 1.4.0 - Advanced Metrics & Performance Trends
 """
 
 import streamlit as st
