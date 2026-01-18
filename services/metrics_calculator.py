@@ -860,7 +860,7 @@ def calculate_holding_sentiment(trades):
     btst_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days == 1]
     velocity_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if 2 <= days <= 4]
     swing_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days > 4]
-    pure_swing_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days > 1]  # All trades > 1 day
+    pure_swing_trades = [(days, pnl, qty) for days, pnl, qty in trade_matches if days > 0]  # All trades > 0 day
     
     # Helper function to calculate metrics
     def calc_metrics(trade_list):
