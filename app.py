@@ -962,8 +962,8 @@ else:
     daily_pnl = pd.DataFrame(columns=['Date', 'PnL'])
     cumulative_pnl = pd.DataFrame(columns=['Date', 'Cumulative P&L'])
 
-# Main Content - Performance Metrics
-st.header("📊 Performance Metrics")
+# Main Content - Dashboard
+st.header("📊 Trading Dashboard")
 
 if filtered_tradebook is not None and filtered_pnl is not None:
     # Check if we have any data to display
@@ -985,7 +985,129 @@ if filtered_tradebook is not None and filtered_pnl is not None:
         
         unique_symbols = len(filtered_tradebook['Symbol'].unique()) if len(filtered_tradebook) > 0 else 0
         st.info(f"🔍 **Filtered View:** {' | '.join(filter_parts)} | **{len(filtered_tradebook)} trades** from **{unique_symbols} symbols**")
-        st.markdown("---")
+    
+    st.markdown("---")
+    
+    # Quick Navigation Buttons - Material Design
+    st.markdown("### 🧭 Quick Navigation")
+    
+    # Custom CSS for Material Design Navigation Buttons
+    st.markdown("""
+        <style>
+        .nav-container {
+            display: flex;
+            gap: 16px;
+            margin: 24px 0;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+        .nav-button {
+            flex: 1;
+            min-width: 180px;
+            background: #ffffff;
+            color: #1a1a1a;
+            padding: 24px 20px;
+            border-radius: 16px;
+            text-align: center;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 14px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            position: relative;
+            overflow: hidden;
+        }
+        .nav-button:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.08);
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+        .nav-button:active {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+        }
+        .nav-button .icon {
+            font-size: 32px;
+            display: block;
+            margin-bottom: 12px;
+            transition: transform 0.2s ease;
+        }
+        .nav-button:hover .icon {
+            transform: scale(1.1);
+        }
+        .nav-button .label {
+            display: block;
+            font-size: 14px;
+            color: #424242;
+            font-weight: 500;
+            letter-spacing: 0.25px;
+        }
+        .nav-button-1 .icon {
+            color: #6750A4;
+        }
+        .nav-button-1:hover {
+            background: #F5F3FF;
+        }
+        .nav-button-2 .icon {
+            color: #E91E63;
+        }
+        .nav-button-2:hover {
+            background: #FCE4EC;
+        }
+        .nav-button-3 .icon {
+            color: #2196F3;
+        }
+        .nav-button-3:hover {
+            background: #E3F2FD;
+        }
+        .nav-button-4 .icon {
+            color: #4CAF50;
+        }
+        .nav-button-4:hover {
+            background: #E8F5E9;
+        }
+        .nav-button-5 .icon {
+            color: #FF9800;
+        }
+        .nav-button-5:hover {
+            background: #FFF3E0;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # Navigation Buttons HTML
+    st.markdown("""
+        <div class="nav-container">
+            <a href="#performance-metrics" class="nav-button nav-button-1">
+                <span class="icon">📊</span>
+                <span class="label">Performance Metrics</span>
+            </a>
+            <a href="#p-l-analysis" class="nav-button nav-button-2">
+                <span class="icon">📈</span>
+                <span class="label">P&L Analysis</span>
+            </a>
+            <a href="#top-winners-losers" class="nav-button nav-button-3">
+                <span class="icon">🏆</span>
+                <span class="label">Top Winners & Losers</span>
+            </a>
+            <a href="#trade-analysis" class="nav-button nav-button-4">
+                <span class="icon">📋</span>
+                <span class="label">Trade Analysis</span>
+            </a>
+            <a href="#trading-style-performance" class="nav-button nav-button-5">
+                <span class="icon">⏱️</span>
+                <span class="label">Trading Style</span>
+            </a>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Section 1: Performance Metrics
+    st.header("📊 Performance Metrics")
+    st.markdown('<div id="performance-metrics"></div>', unsafe_allow_html=True)
     
     # Material-UI Grid Layout for Performance Metrics
     with elements("performance_metrics"):
@@ -1029,8 +1151,10 @@ if filtered_tradebook is not None and filtered_pnl is not None:
             st.markdown("### 💡 Actionable Insights")
             st.info(sentiment_data['recommendation'])
     
-    # P&L Analysis Section
+    # Section 2: P&L Analysis
+    st.markdown("---")
     st.header("📈 P&L Analysis")
+    st.markdown('<div id="p-l-analysis"></div>', unsafe_allow_html=True)
     
     # Equity Curve
     if len(daily_pnl) > 0:
@@ -1117,8 +1241,10 @@ if filtered_tradebook is not None and filtered_pnl is not None:
             else:
                 st.info("No cumulative P&L data available")
     
-    # Top Winners/Losers
+    # Section 3: Top Winners/Losers
+    st.markdown("---")
     st.header("🏆 Top Winners & Losers")
+    st.markdown('<div id="top-winners-losers"></div>', unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     
@@ -1152,8 +1278,10 @@ if filtered_tradebook is not None and filtered_pnl is not None:
         else:
             st.info("No losers data available")
     
-    # Trade Analysis Section
+    # Section 4: Trade Analysis
+    st.markdown("---")
     st.header("📋 Trade Analysis")
+    st.markdown('<div id="trade-analysis"></div>', unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     
@@ -1195,9 +1323,10 @@ if filtered_tradebook is not None and filtered_pnl is not None:
         else:
             st.info("No data available")
     
-    # Trading Style Performance Analysis - Main Section
-    st.header("📊 Trading Style Performance")
+    # Section 5: Trading Style Performance
     st.markdown("---")
+    st.header("⏱️ Trading Style Performance")
+    st.markdown('<div id="trading-style-performance"></div>', unsafe_allow_html=True)
     sentiment_data = mc.calculate_holding_sentiment(filtered_tradebook)
     
     # Calculate correct total (Pure Swing is a superset, not a separate category)
