@@ -1689,14 +1689,57 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
         else:
             symbol_trades = symbol_trades.sort_values(['Trade Date', 'Trade ID'])
         
-        buy_queue = []
+        buy_queue = []  # List of {date, quantity, price, trade_dict}
         for idx, trade_row in symbol_trades.iterrows():
+            trade_date = trade_row['Trade Date']
+            quantity = trade_row['Quantity']
+            price = trade_row['Price']
+            
+            if pd.isna(trade_date) or pd.isna(quantity) or pd.isna(price):
+                continue
+            
             trade = trade_row.to_dict()
+            
             if trade.get('Trade Type') == 'buy':
-                buy_queue.append(trade)
+                # Store date directly from DataFrame (same as match_trades_with_pnl)
+                buy_queue.append({
+                    'date': trade_date,
+                    'quantity': quantity,
+                    'price': price,
+                    'trade_dict': trade
+                })
             elif trade.get('Trade Type') == 'sell' and len(buy_queue) > 0:
-                buy_trade = buy_queue.pop(0)
-                trade_pairs.append((buy_trade, trade, symbol))
+                # Match sell with earliest buy (FIFO) - same logic as match_trades_with_pnl
+                remaining_sell = quantity
+                sell_price = price
+                
+                while remaining_sell > 0 and len(buy_queue) > 0:
+                    buy = buy_queue[0]
+                    buy_date = buy['date']
+                    buy_price = buy['price']
+                    
+                    # Calculate holding days using same logic as match_trades_with_pnl
+                    # Use dates directly from DataFrame (not converted to date objects)
+                    holding_days = (trade_date - buy_date).days
+                    
+                    # Ensure holding days is non-negative
+                    if holding_days < 0:
+                        buy_queue.pop(0)
+                        continue
+                    
+                    if buy['quantity'] <= remaining_sell:
+                        # Use entire buy trade
+                        matched_qty = buy['quantity']
+                        trade_pairs.append((buy['trade_dict'], trade, symbol, holding_days))
+                        remaining_sell -= matched_qty
+                        buy_queue.pop(0)
+                    else:
+                        # Use partial buy trade - for MAE/MFE, we'll use the full buy trade
+                        # (since we need complete trade pairs for price data)
+                        matched_qty = remaining_sell
+                        trade_pairs.append((buy['trade_dict'], trade, symbol, holding_days))
+                        buy['quantity'] -= matched_qty
+                        remaining_sell = 0
     
     total_pairs = len(trade_pairs)
     if total_pairs == 0:
@@ -1707,10 +1750,15 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
     
     # Step 2: Prepare fetch requests
     fetch_requests = []
-    for buy_trade, sell_trade, symbol in trade_pairs:
-        start_date = pd.to_datetime(buy_trade.get('Trade Date'))
-        end_date = pd.to_datetime(sell_trade.get('Trade Date'))
-        holding_days = (end_date - start_date).days
+    for buy_trade, sell_trade, symbol, holding_days in trade_pairs:
+        # Get dates from trade dictionaries (already in correct format from DataFrame)
+        buy_trade_date = buy_trade.get('Trade Date')
+        sell_trade_date = sell_trade.get('Trade Date')
+        
+        # Convert to datetime for API calls (needed for openchart)
+        start_date = pd.to_datetime(buy_trade_date)
+        end_date = pd.to_datetime(sell_trade_date)
+        
         interval = '5m' if holding_days == 0 else '1d'
         
         fetch_requests.append({
@@ -1720,7 +1768,7 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
             'interval': interval,
             'buy_trade': buy_trade,
             'sell_trade': sell_trade,
-            'holding_days': holding_days
+            'holding_days': holding_days  # Already calculated using same logic as match_trades_with_pnl
         })
     
     # Step 3: Parallel fetch using ThreadPoolExecutor (Optimization 3: Batch Requests)
@@ -1789,7 +1837,8 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
                 buy_price = buy_trade.get('Price', 0)
                 sell_price = sell_trade.get('Price', 0)
                 
-                if buy_price == 0 or sell_price == 0:
+                # Validate prices are valid and positive
+                if buy_price <= 0 or sell_price <= 0 or pd.isna(buy_price) or pd.isna(sell_price):
                     continue
                 
                 # Ensure we have required columns
@@ -1797,23 +1846,49 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
                 if not all(col in hist_data.columns for col in required_cols):
                     continue
                 
+                # Get lowest and highest prices during the trade period
                 lowest_price = hist_data['Low'].min()
                 highest_price = hist_data['High'].max()
                 
-                if pd.isna(lowest_price) or pd.isna(highest_price):
+                # Validate historical data
+                if pd.isna(lowest_price) or pd.isna(highest_price) or lowest_price <= 0 or highest_price <= 0:
                     continue
                 
                 # Calculate MAE and MFE
-                mae = buy_price - lowest_price
-                mfe = highest_price - buy_price
+                # MAE: Maximum Adverse Excursion (how far price went AGAINST you)
+                # For long positions: price can only go down from entry, so MAE should be >= 0
+                # If lowest_price > buy_price, it means price never went below entry (MAE = 0)
+                # This can happen if historical data doesn't include the exact entry time
+                mae = max(0, buy_price - lowest_price)  # Ensure MAE is never negative
                 
-                mae_pct = (mae / buy_price) * 100
-                mfe_pct = (mfe / buy_price) * 100
+                # MFE: Maximum Favorable Excursion (how far price went IN YOUR FAVOR)
+                # For long positions: price can only go up from entry, so MFE should be >= 0
+                # If highest_price < buy_price, it means price never went above entry (MFE = 0)
+                # This is rare but possible if price only moved down
+                mfe = max(0, highest_price - buy_price)  # Ensure MFE is never negative
                 
+                # Calculate percentages (safeguard against division by zero)
+                mae_pct = (mae / buy_price) * 100 if buy_price > 0 else 0
+                mfe_pct = (mfe / buy_price) * 100 if buy_price > 0 else 0
+                
+                # Calculate exit P&L
                 exit_pnl = sell_price - buy_price
-                exit_pnl_pct = (exit_pnl / buy_price) * 100
+                exit_pnl_pct = (exit_pnl / buy_price) * 100 if buy_price > 0 else 0
                 
+                # Calculate exit efficiency (only for winners with positive MFE)
+                # Efficiency = (Actual P&L / Maximum Favorable Excursion) * 100
+                # This shows what % of available profit you captured
                 exit_efficiency = (exit_pnl / mfe * 100) if (mfe > 0 and exit_pnl > 0) else 0
+                
+                # Clamp efficiency to reasonable range (0-100%)
+                # If efficiency > 100%, it means you captured more than MFE (data issue or edge case)
+                exit_efficiency = min(100, max(0, exit_efficiency))
+                
+                # Additional validation: Ensure calculated values are reasonable
+                # MAE and MFE percentages should be reasonable (e.g., < 100% for most stocks)
+                # Very high values (>100%) might indicate data errors, but we'll keep them
+                # as they could be legitimate for highly volatile stocks or data gaps
+                # The max(0, ...) ensures they're at least non-negative
                 
                 start_date = request['start_date']
                 end_date = request['end_date']
