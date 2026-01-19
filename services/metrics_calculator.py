@@ -1574,7 +1574,23 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
     def fetch_hist_data(symbol, start_date, end_date, interval):
         """Fetch historical data, using cached function if provided"""
         if fetch_function:
-            # Use cached function from Streamlit
+            # Normalize dates to date-only strings for consistent cache keys
+            # This ensures the same cache key regardless of date object type
+            if isinstance(start_date, pd.Timestamp):
+                start_date_normalized = start_date.date().isoformat()
+            elif isinstance(start_date, datetime):
+                start_date_normalized = start_date.date().isoformat()
+            else:
+                start_date_normalized = pd.to_datetime(start_date).date().isoformat()
+            
+            if isinstance(end_date, pd.Timestamp):
+                end_date_normalized = end_date.date().isoformat()
+            elif isinstance(end_date, datetime):
+                end_date_normalized = end_date.date().isoformat()
+            else:
+                end_date_normalized = pd.to_datetime(end_date).date().isoformat()
+            
+            # Use cached function from Streamlit with normalized dates
             symbol_variants = [
                 f"{symbol}-EQ",
                 symbol,
@@ -1583,7 +1599,7 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
             ]
             for chart_symbol in symbol_variants:
                 try:
-                    hist_data = fetch_function(chart_symbol, start_date, end_date, interval)
+                    hist_data = fetch_function(chart_symbol, start_date_normalized, end_date_normalized, interval)
                     if not hist_data.empty and 'Open' in hist_data.columns and 'High' in hist_data.columns:
                         return hist_data, chart_symbol
                 except:

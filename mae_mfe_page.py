@@ -12,11 +12,15 @@ from datetime import datetime, timedelta
 from services import metrics_calculator as mc
 
 # Cached function for fetching historical data (Optimization 1: Aggressive Caching)
+# Normalize dates to ensure consistent cache keys across environments
 @st.cache_data(ttl=1800, show_spinner=False)  # Cache for 30 minutes
 def fetch_historical_data_cached(symbol, start_date, end_date, interval, segment='EQ'):
     """
     Cached wrapper for fetching historical data from openchart.
     This prevents re-fetching the same data multiple times.
+    
+    Dates are normalized to date-only strings to ensure consistent cache keys
+    across different environments (local vs deployed).
     
     Args:
         symbol: Stock symbol (e.g., 'RELIANCE-EQ', 'TCS')
@@ -32,27 +36,28 @@ def fetch_historical_data_cached(symbol, start_date, end_date, interval, segment
         from openchart import NSEData
         openchart_nse = NSEData()
         
-        # Convert dates to pd.Timestamp (openchart expects pd.Timestamp, not date objects)
-        # Match the format used in the non-cached version
-        if isinstance(start_date, pd.Timestamp):
+        # Dates are now normalized to ISO strings by caller for consistent cache keys
+        # Convert ISO date strings to pd.Timestamp for openchart
+        # Handle both string (ISO format) and date object inputs for backward compatibility
+        if isinstance(start_date, str):
+            start_date_obj = pd.Timestamp(start_date)
+        elif isinstance(start_date, pd.Timestamp):
             start_date_obj = start_date
         elif isinstance(start_date, datetime):
             start_date_obj = pd.Timestamp(start_date)
-        elif isinstance(start_date, str):
-            start_date_obj = pd.to_datetime(start_date)
         else:
-            # date object - convert to pd.Timestamp
-            start_date_obj = pd.Timestamp(start_date) if hasattr(start_date, 'year') else pd.to_datetime(start_date)
-            
-        if isinstance(end_date, pd.Timestamp):
+            # date object or other - normalize to ISO string first
+            start_date_obj = pd.Timestamp(pd.to_datetime(start_date).date().isoformat())
+        
+        if isinstance(end_date, str):
+            end_date_obj = pd.Timestamp(end_date)
+        elif isinstance(end_date, pd.Timestamp):
             end_date_obj = end_date
         elif isinstance(end_date, datetime):
             end_date_obj = pd.Timestamp(end_date)
-        elif isinstance(end_date, str):
-            end_date_obj = pd.to_datetime(end_date)
         else:
-            # date object - convert to pd.Timestamp
-            end_date_obj = pd.Timestamp(end_date) if hasattr(end_date, 'year') else pd.to_datetime(end_date)
+            # date object or other - normalize to ISO string first
+            end_date_obj = pd.Timestamp(pd.to_datetime(end_date).date().isoformat())
         
         # Add 1 day to end_date (matching non-cached version)
         from datetime import timedelta
