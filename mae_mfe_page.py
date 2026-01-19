@@ -110,8 +110,8 @@ def show():
     st.markdown('<h1 class="main-header">🎯 MAE/MFE Analysis</h1>', unsafe_allow_html=True)
     st.markdown('<p class="sub-header">Maximum Adverse Excursion & Maximum Favorable Excursion - Optimize Your Stops and Targets</p>', unsafe_allow_html=True)
     
-    # Check if data is available from main app
-    if 'filtered_tradebook' not in st.session_state or st.session_state.filtered_tradebook is None:
+    # Check if data is available from main app (use full tradebook, not filtered)
+    if 'tradebook_data' not in st.session_state or st.session_state.tradebook_data is None:
         st.warning("⚠️ **No Data Available!** Please upload your tradebook data on the main dashboard first.")
         
         # Add a prominent button to go back to home
@@ -159,21 +159,10 @@ def show():
         
         return
     
-    # Get filtered tradebook
-    filtered_tradebook = st.session_state.filtered_tradebook
+    # Get full tradebook (all stocks, not filtered) - ensures consistency between local and deployed
+    tradebook = st.session_state.tradebook_data
     
     st.markdown("---")
-    
-    # Sidebar info
-    with st.sidebar:
-        st.markdown("### 📊 Analysis Settings")
-        st.info(f"**Trades Available:** {len(filtered_tradebook)}")
-        
-        if 'mae_mfe_data' in st.session_state and st.session_state.mae_mfe_data is not None:
-            st.success(f"✅ MAE/MFE data cached for {len(st.session_state.mae_mfe_data)} trades")
-            if st.button("🔄 Recalculate", use_container_width=True):
-                st.session_state.mae_mfe_data = None
-                st.rerun()
     
     # Initialize session state for MAE/MFE data
     if 'mae_mfe_data' not in st.session_state:
@@ -214,8 +203,9 @@ def show():
                     progress_bar.progress(0)
                     
                     # Pass the cached fetch function for optimization
+                    # Using full tradebook (all stocks) - ensures consistency between local and deployed
                     mae_mfe_df = mc.calculate_mae_mfe_for_trades(
-                        filtered_tradebook, 
+                        tradebook, 
                         progress_callback=update_progress,
                         fetch_function=fetch_historical_data_cached
                     )
@@ -235,13 +225,13 @@ def show():
                         st.error("❌ No MAE/MFE data could be calculated.")
                         
                         # Show diagnostic information
-                        buy_count = len(filtered_tradebook[filtered_tradebook['Trade Type'].str.lower() == 'buy'])
-                        sell_count = len(filtered_tradebook[filtered_tradebook['Trade Type'].str.lower() == 'sell'])
-                        unique_symbols = filtered_tradebook['Symbol'].unique()
+                        buy_count = len(tradebook[tradebook['Trade Type'].str.lower() == 'buy'])
+                        sell_count = len(tradebook[tradebook['Trade Type'].str.lower() == 'sell'])
+                        unique_symbols = tradebook['Symbol'].unique()
                         
                         st.markdown(f"""
                         **Diagnostic Information:**
-                        - Total trades: {len(filtered_tradebook)}
+                        - Total trades: {len(tradebook)}
                         - Buy trades: {buy_count}
                         - Sell trades: {sell_count}
                         - Unique symbols: {len(unique_symbols)}
