@@ -68,11 +68,15 @@ def match_buy_sell_trades(trades):
     """
     holding_periods = []  # List of (days, quantity) tuples
     
-    # Group trades by symbol
-    for symbol in trades['Symbol'].unique():
+    # Group trades by symbol - sort symbols for deterministic processing order
+    for symbol in sorted(trades['Symbol'].unique()):
         symbol_trades = trades[trades['Symbol'] == symbol].copy()
         
         # Sort by Trade Date and Order Execution Time for proper FIFO matching
+        # Ensure Trade ID is converted to string for consistent sorting
+        if 'Trade ID' in symbol_trades.columns:
+            symbol_trades['Trade ID'] = symbol_trades['Trade ID'].astype(str)
+        
         if 'Order Execution Time' in symbol_trades.columns:
             # Parse execution time if available
             symbol_trades['ExecTime'] = pd.to_datetime(
@@ -231,11 +235,15 @@ def get_daily_pnl_from_pnl_data(pnl_data, trades):
     
     daily_pnl_dict = {}
     
-    # Group trades by symbol for FIFO matching
-    for symbol in trades['Symbol'].unique():
+    # Group trades by symbol for FIFO matching - sort symbols for deterministic order
+    for symbol in sorted(trades['Symbol'].unique()):
         symbol_trades = trades[trades['Symbol'] == symbol].copy()
         
         # Sort by Trade Date and Order Execution Time for proper FIFO matching
+        # Ensure Trade ID is converted to string for consistent sorting
+        if 'Trade ID' in symbol_trades.columns:
+            symbol_trades['Trade ID'] = symbol_trades['Trade ID'].astype(str)
+        
         if 'Order Execution Time' in symbol_trades.columns:
             symbol_trades['ExecTime'] = pd.to_datetime(
                 symbol_trades['Order Execution Time'], 
@@ -588,11 +596,16 @@ def get_win_rate_by_symbol(pnl_data, trades=None):
     if trades is not None and len(trades) > 0:
         win_rate_list = []
         
-        for symbol in trades['Symbol'].unique():
+        # Sort symbols for deterministic processing order
+        for symbol in sorted(trades['Symbol'].unique()):
             symbol_trades = trades[trades['Symbol'] == symbol].copy()
             
             # Get trade matches with P&L for this symbol
             # Sort by Trade Date and Order Execution Time for proper FIFO matching
+            # Ensure Trade ID is converted to string for consistent sorting
+            if 'Trade ID' in symbol_trades.columns:
+                symbol_trades['Trade ID'] = symbol_trades['Trade ID'].astype(str)
+            
             if 'Order Execution Time' in symbol_trades.columns:
                 symbol_trades['ExecTime'] = pd.to_datetime(
                     symbol_trades['Order Execution Time'], 
@@ -678,10 +691,15 @@ def get_avg_holding_period_by_stock(trades):
     
     holding_periods_by_stock = []
     
-    for symbol in trades['Symbol'].unique():
+    # Sort symbols for deterministic processing order
+    for symbol in sorted(trades['Symbol'].unique()):
         symbol_trades = trades[trades['Symbol'] == symbol].copy()
         
         # Sort properly for FIFO matching
+        # Ensure Trade ID is converted to string for consistent sorting
+        if 'Trade ID' in symbol_trades.columns:
+            symbol_trades['Trade ID'] = symbol_trades['Trade ID'].astype(str)
+        
         if 'Order Execution Time' in symbol_trades.columns:
             symbol_trades['ExecTime'] = pd.to_datetime(
                 symbol_trades['Order Execution Time'], 
@@ -747,11 +765,15 @@ def match_trades_with_pnl(trades):
     """
     trade_matches = []  # List of (days, pnl, quantity) tuples
     
-    # Group trades by symbol
-    for symbol in trades['Symbol'].unique():
+    # Group trades by symbol - sort symbols for deterministic processing order
+    for symbol in sorted(trades['Symbol'].unique()):
         symbol_trades = trades[trades['Symbol'] == symbol].copy()
         
         # Sort by Trade Date and Order Execution Time for proper FIFO matching
+        # Ensure Trade ID is converted to string for consistent sorting (handles numeric vs string IDs)
+        if 'Trade ID' in symbol_trades.columns:
+            symbol_trades['Trade ID'] = symbol_trades['Trade ID'].astype(str)
+        
         if 'Order Execution Time' in symbol_trades.columns:
             symbol_trades['ExecTime'] = pd.to_datetime(
                 symbol_trades['Order Execution Time'], 
@@ -1190,11 +1212,15 @@ def calculate_rolling_expectancy(trades, window=20):
     # Get matched trades with P&L and dates
     trade_matches = []
     
-    # Group trades by symbol to track dates
-    for symbol in trades['Symbol'].unique():
+    # Group trades by symbol to track dates - sort symbols for deterministic order
+    for symbol in sorted(trades['Symbol'].unique()):
         symbol_trades = trades[trades['Symbol'] == symbol].copy()
         
         # Sort by Trade Date and Order Execution Time for proper FIFO matching
+        # Ensure Trade ID is converted to string for consistent sorting
+        if 'Trade ID' in symbol_trades.columns:
+            symbol_trades['Trade ID'] = symbol_trades['Trade ID'].astype(str)
+        
         if 'Order Execution Time' in symbol_trades.columns:
             symbol_trades['ExecTime'] = pd.to_datetime(
                 symbol_trades['Order Execution Time'], 
@@ -1341,8 +1367,13 @@ def calculate_monthly_expectancy(trades):
     # Get matched trades with P&L and dates
     trade_matches = []
     
-    for symbol in trades['Symbol'].unique():
+    # Sort symbols for deterministic processing order
+    for symbol in sorted(trades['Symbol'].unique()):
         symbol_trades = trades[trades['Symbol'] == symbol].copy()
+        
+        # Ensure Trade ID is converted to string for consistent sorting
+        if 'Trade ID' in symbol_trades.columns:
+            symbol_trades['Trade ID'] = symbol_trades['Trade ID'].astype(str)
         
         if 'Order Execution Time' in symbol_trades.columns:
             symbol_trades['ExecTime'] = pd.to_datetime(
@@ -1635,12 +1666,17 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
         progress_callback(10, "Matching buy-sell pairs...")
     
     trade_pairs = []  # List of (buy_trade, sell_trade, symbol) tuples
-    unique_symbols = trades['Symbol'].unique()
+    # Sort symbols for deterministic processing order
+    unique_symbols = sorted(trades['Symbol'].unique())
     
     for symbol in unique_symbols:
         symbol_trades = trades[trades['Symbol'] == symbol].copy()
         
         # Sort by date and execution time
+        # Ensure Trade ID is converted to string for consistent sorting
+        if 'Trade ID' in symbol_trades.columns:
+            symbol_trades['Trade ID'] = symbol_trades['Trade ID'].astype(str)
+        
         if 'Order Execution Time' in symbol_trades.columns:
             symbol_trades['ExecTime'] = pd.to_datetime(
                 symbol_trades['Order Execution Time'], 
@@ -1815,7 +1851,8 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
         
         # Check if we have matched pairs
         matched_pairs = 0
-        for symbol in trades['Symbol'].unique():
+        # Sort symbols for deterministic processing order
+        for symbol in sorted(trades['Symbol'].unique()):
             symbol_trades = trades[trades['Symbol'] == symbol]
             buys = symbol_trades[symbol_trades['Trade Type'].str.lower() == 'buy']
             sells = symbol_trades[symbol_trades['Trade Type'].str.lower() == 'sell']
