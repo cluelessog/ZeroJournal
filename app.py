@@ -1,7 +1,7 @@
 """
 ZeroJournal - Trading Dashboard for Swing Traders
 Main Streamlit application
-Version: 1.4.0 - Advanced Metrics & Performance Trends
+Version: 1.5.0 - Enhanced MAE/MFE Analysis & Data Validation
 """
 
 import streamlit as st
