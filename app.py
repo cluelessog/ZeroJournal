@@ -649,369 +649,387 @@ if df_tradebook is None or df_pnl is None:
     """)
     st.stop()
 
-# Sidebar - Portfolio Settings
-st.sidebar.header("💰 Portfolio Settings")
-
-initial_capital = st.sidebar.number_input(
-    "Initial Capital (₹)",
-    min_value=0.0,
-    value=float(st.session_state.initial_capital) if st.session_state.initial_capital > 0 else 0.0,
-    step=1000.0,
-    help="Enter your starting capital amount"
-)
-st.session_state.initial_capital = initial_capital
-
-show_charges = st.sidebar.checkbox(
-    "Show Total Charges",
-    value=True,
-    help="Display total charges paid"
-)
-
-if show_charges and st.session_state.total_charges > 0:
-    st.sidebar.metric("Total Charges (All Trades)", format_currency(st.session_state.total_charges))
+# Dashboard-specific sidebar sections (only show on main dashboard page)
+if st.session_state.current_page != 'mae_mfe':
+    # Sidebar - Portfolio Settings
+    st.sidebar.header("💰 Portfolio Settings")
     
-    # Show proportional charge allocation if filters are active
-    if 'filtered_charges' in st.session_state and st.session_state.get('filtered_charges', 0) < st.session_state.total_charges:
-        filtered_charges = st.session_state.filtered_charges
-        ratio = st.session_state.get('charge_allocation_ratio', 0)
-        st.sidebar.info(f"📊 Filtered charges: {format_currency(filtered_charges)} ({ratio:.1f}% of total)")
-        st.sidebar.caption("Charges allocated proportionally by turnover")
-
-# Sidebar - Filters Section
-st.sidebar.header("🔍 Filters")
-
-# Initialize enable_sector_filter
-enable_sector_filter = False
-
-# Optional: Enable Sector Filtering
-if df_tradebook is not None:
-    enable_sector_filter = st.sidebar.checkbox(
-        "🏢 Enable Sector Filter",
-        value=False,
-        help="Fetch sector information from Yahoo Finance (may take a moment)"
+    initial_capital = st.sidebar.number_input(
+        "Initial Capital (₹)",
+        min_value=0.0,
+        value=float(st.session_state.initial_capital) if st.session_state.initial_capital > 0 else 0.0,
+        step=1000.0,
+        help="Enter your starting capital amount"
+    )
+    st.session_state.initial_capital = initial_capital
+    
+    show_charges = st.sidebar.checkbox(
+        "Show Total Charges",
+        value=True,
+        help="Display total charges paid"
     )
     
-    if enable_sector_filter:
-        if 'sector_map' not in st.session_state or not st.session_state.get('sectors_fetched', False):
-            try:
-                with st.spinner("Fetching sector information... This may take a moment."):
-                    unique_symbols = df_tradebook['Symbol'].unique()
-                    
-                    # Show progress
-                    progress_bar = st.sidebar.progress(0)
-                    status_text = st.sidebar.empty()
-                    
-                    def update_progress(current, total):
-                        progress = current / total
-                        progress_bar.progress(progress)
-                        status_text.markdown(f'<p style="color: white; font-weight: 500;">Fetching sectors: {current}/{total}</p>', unsafe_allow_html=True)
-                    
-                    sector_map = sector_mapper.get_sectors_for_symbols(unique_symbols, update_progress)
-                    st.session_state.sector_map = sector_map
-                    st.session_state.sectors_fetched = True
-                    
-                    # Clear progress indicators
-                    progress_bar.empty()
-                    status_text.empty()
-                    st.sidebar.success(f"✓ Fetched sectors for {len(sector_map)} symbols")
-            except Exception as e:
-                st.sidebar.error(f"⚠️ Error fetching sectors: {str(e)}")
-                st.session_state.sector_map = {}
-                st.session_state.sectors_fetched = False
-    else:
-        # Clear sector data if disabled
-        if 'sector_map' in st.session_state:
-            del st.session_state.sector_map
-            st.session_state.sectors_fetched = False
-
-# Date range filter
-if df_tradebook is not None:
-    min_date = df_tradebook['Trade Date'].min().date()
-    max_date = df_tradebook['Trade Date'].max().date()
-    
-    date_range = st.sidebar.date_input(
-        "Date Range",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date,
-        help="Select date range for analysis"
-    )
-    
-    # Handle single date selection
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        start_date, end_date = date_range
-        # Ensure start_date <= end_date
-        if start_date > end_date:
-            start_date, end_date = end_date, start_date
-    else:
-        start_date = min_date
-        end_date = max_date
-    
-    # Filter by date range
-    filtered_tradebook = df_tradebook[
-        (df_tradebook['Trade Date'].dt.date >= start_date) &
-        (df_tradebook['Trade Date'].dt.date <= end_date)
-    ].copy()
-    
-    # Get all available symbols for independent filtering
-    all_available_symbols = sorted(df_tradebook['Symbol'].unique().tolist())
-    
-    # Initialize independent filters
-    selected_sectors = []
-    selected_symbols = []
-    
-    # Sector Filter (independent, optional) - Single Select
-    if enable_sector_filter:
-        if 'sector_map' in st.session_state and st.session_state.sector_map:
-            sector_map = st.session_state.sector_map
-            available_sectors = sorted(set(sector_map.values()))
-            available_sectors = [s for s in available_sectors if s != 'Unknown']
-            
-            if available_sectors:
-                # Add "All Sectors" as the first option
-                sector_options = ["All Sectors"] + available_sectors
-                
-                # Initialize selected sector in session state
-                if 'selected_sector' not in st.session_state:
-                    st.session_state.selected_sector = "All Sectors"
-                
-                # Use a different key approach to force refresh on reset
-                selected_sector = st.sidebar.selectbox(
-                    "Filter by Sector",
-                    options=sector_options,
-                    index=sector_options.index(st.session_state.selected_sector) if st.session_state.selected_sector in sector_options else 0,
-                    key="sector_selectbox_" + str(st.session_state.get('filter_reset_counter', 0)),
-                    help="Select a specific sector to filter (All Sectors = show all)"
-                )
-                
-                # Update session state when selection changes
-                st.session_state.selected_sector = selected_sector
-                
-                # Convert to list format for filtering logic
-                if selected_sector == "All Sectors":
-                    selected_sectors = []
-                else:
-                    selected_sectors = [selected_sector]
-            else:
-                st.sidebar.warning("⚠️ No sectors found. All symbols marked as 'Unknown'.")
-                selected_sectors = []
-        else:
-            st.sidebar.info("ℹ️ Enable sector filter to fetch sector data.")
-            selected_sectors = []
-    else:
-        selected_sectors = []
-    
-    # Symbol Filter (independent) - Single Select
-    # Add "All Stocks" as the first option
-    symbol_options = ["All Stocks"] + all_available_symbols
-    
-    # Initialize selected symbol in session state
-    if 'selected_symbol' not in st.session_state:
-        st.session_state.selected_symbol = "All Stocks"
-    
-    # Reset button for all filters (symbol + sector)
-    if st.sidebar.button("🔄 Reset Filters", key="reset_filters_btn", use_container_width=True, help="Reset all filters (sector & symbol)"):
-        st.session_state.selected_symbol = "All Stocks"
-        st.session_state.selected_sector = "All Sectors"
-        # Increment counter to force widget refresh
-        if 'filter_reset_counter' not in st.session_state:
-            st.session_state.filter_reset_counter = 0
-        st.session_state.filter_reset_counter += 1
-        st.rerun()
-    
-    # Get the index for the current selection
-    try:
-        current_index = symbol_options.index(st.session_state.selected_symbol)
-    except ValueError:
-        current_index = 0
-        st.session_state.selected_symbol = "All Stocks"
-    
-    selected_symbol = st.sidebar.selectbox(
-        "Filter by Symbol",
-        options=symbol_options,
-        index=current_index,
-        key="symbol_selectbox",
-        help="Select a specific symbol to filter (All Stocks = show all)"
-    )
-    
-    # Update session state when selection changes
-    if selected_symbol != st.session_state.selected_symbol:
-        st.session_state.selected_symbol = selected_symbol
-    
-    # Convert to list format for filtering logic
-    if selected_symbol == "All Stocks":
-        selected_symbols = []
-    else:
-        selected_symbols = [selected_symbol]
-    
-    # Apply BOTH filters independently to the date-filtered data
-    # Start with date-filtered data
-    filtered_by_date = filtered_tradebook.copy()
-    filtered_pnl_by_date = df_pnl.copy()
-    
-    # Apply sector filter (if enabled and sector selected)
-    if enable_sector_filter and selected_sectors and 'sector_map' in st.session_state:
-        sector_map = st.session_state.sector_map
-        # selected_sectors is now a list with one sector or empty
-        symbols_in_selected_sectors = [sym for sym in all_available_symbols 
-                                      if sector_map.get(sym, 'Unknown') in selected_sectors]
-        filtered_by_date = filtered_by_date[filtered_by_date['Symbol'].isin(symbols_in_selected_sectors)]
-        filtered_pnl_by_date = filtered_pnl_by_date[filtered_pnl_by_date['Symbol'].isin(symbols_in_selected_sectors)]
-    
-    # Apply symbol filter (if symbols selected)
-    if selected_symbols:
-        # Filter by selected symbols
-        filtered_tradebook = filtered_by_date[filtered_by_date['Symbol'].isin(selected_symbols)]
-        filtered_pnl = filtered_pnl_by_date[filtered_pnl_by_date['Symbol'].isin(selected_symbols)].copy()
-    else:
-        # When no symbols selected (empty/reset state), show ALL stocks
-        # This ensures all stocks are displayed by default
-        filtered_tradebook = filtered_by_date.copy()
-        filtered_pnl = filtered_pnl_by_date.copy()
-    
-    # Show filter status - Active Filters Indicator
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("📌 Active Filters")
-    
-    active_filters = []
-    if start_date and end_date:
-        active_filters.append(f"📅 Date: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
-    if enable_sector_filter and selected_sectors:
-        active_filters.append(f"🏢 Sector: {selected_sectors[0]}")
-    if selected_symbols:
-        active_filters.append(f"📊 Symbol: {selected_symbols[0]}")
-    
-    if active_filters:
-        for filter_text in active_filters:
-            st.sidebar.info(filter_text)
+    if show_charges and st.session_state.total_charges > 0:
+        st.sidebar.metric("Total Charges (All Trades)", format_currency(st.session_state.total_charges))
         
-        # Show filtered data stats
-        unique_symbols_count = len(filtered_tradebook['Symbol'].unique()) if len(filtered_tradebook) > 0 else 0
-        st.sidebar.success(f"✓ {len(filtered_tradebook)} trades | {unique_symbols_count} symbols")
-    else:
-        st.sidebar.info("ℹ️ No filters active - showing all data")
-        unique_symbols_count = len(filtered_tradebook['Symbol'].unique()) if len(filtered_tradebook) > 0 else 0
-        st.sidebar.success(f"Total: {len(filtered_tradebook)} trades | {unique_symbols_count} symbols")
-else:
-    filtered_tradebook = df_tradebook
-    filtered_pnl = df_pnl
-    start_date = None
-    end_date = None
-    selected_symbols = []
-
-# Export Section
-st.sidebar.header("💾 Export Data")
-
-# Calculate metrics for filtered data
-if filtered_tradebook is not None and filtered_pnl is not None:
-    # Check if dataframes are empty
-    has_tradebook_data = len(filtered_tradebook) > 0
-    has_pnl_data = len(filtered_pnl) > 0
+        # Show proportional charge allocation if filters are active
+        if 'filtered_charges' in st.session_state and st.session_state.get('filtered_charges', 0) < st.session_state.total_charges:
+            filtered_charges = st.session_state.filtered_charges
+            ratio = st.session_state.get('charge_allocation_ratio', 0)
+            st.sidebar.info(f"📊 Filtered charges: {format_currency(filtered_charges)} ({ratio:.1f}% of total)")
+            st.sidebar.caption("Charges allocated proportionally by turnover")
     
-    # Get daily P&L for filtered data
-    if has_pnl_data and has_tradebook_data:
-        daily_pnl = mc.get_daily_pnl_from_pnl_data(filtered_pnl, filtered_tradebook)
-    else:
-        daily_pnl = pd.DataFrame(columns=['Date', 'PnL'])
+    # Sidebar - Filters Section
+    st.sidebar.header("🔍 Filters")
     
-    if len(daily_pnl) == 0 and has_tradebook_data:
-        # Fallback to tradebook-based calculation
-        daily_pnl = mc.get_daily_pnl(filtered_tradebook)
+    # Initialize enable_sector_filter
+    enable_sector_filter = False
     
-    # Distribute charges pro-rata by daily turnover (proportional to filtered data)
-    if len(daily_pnl) > 0 and st.session_state.total_charges > 0:
-        # Calculate proportional charges based on filtered turnover vs total turnover
-        if df_tradebook is not None and len(df_tradebook) > 0:
-            # Calculate turnover for filtered data
-            filtered_turnover = mc.calculate_daily_turnover(filtered_tradebook)['Turnover'].sum() if len(filtered_tradebook) > 0 else 0
-            
-            # Calculate total turnover from all data
-            total_turnover_df = mc.calculate_daily_turnover(df_tradebook)
-            total_turnover = total_turnover_df['Turnover'].sum() if len(total_turnover_df) > 0 else 0
-            
-            # Proportional charges for filtered data
-            if total_turnover > 0:
-                proportional_charges = st.session_state.total_charges * (filtered_turnover / total_turnover)
-            else:
-                proportional_charges = 0
-        else:
-            proportional_charges = st.session_state.total_charges
-        
-        daily_pnl = mc.distribute_charges_pro_rata(
-            daily_pnl, 
-            filtered_tradebook, 
-            proportional_charges,
-            dp_charges_dict=None  # Can be enhanced to extract DP charge dates
+    # Optional: Enable Sector Filtering
+    if df_tradebook is not None:
+        enable_sector_filter = st.sidebar.checkbox(
+            "🏢 Enable Sector Filter",
+            value=False,
+            help="Fetch sector information from Yahoo Finance (may take a moment)"
         )
         
-        # Store charge info for display
-        st.session_state.filtered_charges = proportional_charges
-        st.session_state.charge_allocation_ratio = (filtered_turnover / total_turnover * 100) if total_turnover > 0 else 0
+        if enable_sector_filter:
+            if 'sector_map' not in st.session_state or not st.session_state.get('sectors_fetched', False):
+                try:
+                    with st.spinner("Fetching sector information... This may take a moment."):
+                        unique_symbols = df_tradebook['Symbol'].unique()
+                        
+                        # Show progress
+                        progress_bar = st.sidebar.progress(0)
+                        status_text = st.sidebar.empty()
+                        
+                        def update_progress(current, total):
+                            progress = current / total
+                            progress_bar.progress(progress)
+                            status_text.markdown(f'<p style="color: white; font-weight: 500;">Fetching sectors: {current}/{total}</p>', unsafe_allow_html=True)
+                        
+                        sector_map = sector_mapper.get_sectors_for_symbols(unique_symbols, update_progress)
+                        st.session_state.sector_map = sector_map
+                        st.session_state.sectors_fetched = True
+                        
+                        # Clear progress indicators
+                        progress_bar.empty()
+                        status_text.empty()
+                        st.sidebar.success(f"✓ Fetched sectors for {len(sector_map)} symbols")
+                except Exception as e:
+                    st.sidebar.error(f"⚠️ Error fetching sectors: {str(e)}")
+                    st.session_state.sector_map = {}
+                    st.session_state.sectors_fetched = False
+        else:
+            # Clear sector data if disabled
+            if 'sector_map' in st.session_state:
+                del st.session_state.sector_map
+                st.session_state.sectors_fetched = False
     
-    # Calculate metrics (safely handle empty dataframes)
-    # Use FIFO-matched trades for consistent win rate and profit factor calculation
-    if has_tradebook_data:
-        # Get matched trades for win rate and profit factor calculation
-        matched_trades = mc.match_trades_with_pnl(filtered_tradebook)
-        if len(matched_trades) > 0:
-            wins = sum(1 for _, pnl, _ in matched_trades if pnl > 0)
-            win_rate = (wins / len(matched_trades)) * 100
-            
-            # Calculate profit factor from matched trades (not aggregated P&L)
-            winning_trades = [pnl for _, pnl, _ in matched_trades if pnl > 0]
-            losing_trades = [pnl for _, pnl, _ in matched_trades if pnl < 0]
-            
-            gross_profit = sum(winning_trades) if len(winning_trades) > 0 else 0
-            gross_loss = abs(sum(losing_trades)) if len(losing_trades) > 0 else 0
-            
-            if gross_loss > 0:
-                profit_factor = gross_profit / gross_loss
+    # Date range filter
+    if df_tradebook is not None:
+        min_date = df_tradebook['Trade Date'].min().date()
+        max_date = df_tradebook['Trade Date'].max().date()
+        
+        date_range = st.sidebar.date_input(
+            "Date Range",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date,
+            help="Select date range for analysis"
+        )
+        
+        # Handle single date selection
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            start_date, end_date = date_range
+            # Ensure start_date <= end_date
+            if start_date > end_date:
+                start_date, end_date = end_date, start_date
+        else:
+            start_date = min_date
+            end_date = max_date
+        
+        # Filter by date range
+        filtered_tradebook = df_tradebook[
+            (df_tradebook['Trade Date'].dt.date >= start_date) &
+            (df_tradebook['Trade Date'].dt.date <= end_date)
+        ].copy()
+        
+        # Get all available symbols for independent filtering
+        all_available_symbols = sorted(df_tradebook['Symbol'].unique().tolist())
+        
+        # Initialize independent filters
+        selected_sectors = []
+        selected_symbols = []
+        
+        # Sector Filter (independent, optional) - Single Select
+        if enable_sector_filter:
+            if 'sector_map' in st.session_state and st.session_state.sector_map:
+                sector_map = st.session_state.sector_map
+                available_sectors = sorted(set(sector_map.values()))
+                available_sectors = [s for s in available_sectors if s != 'Unknown']
+                
+                if available_sectors:
+                    # Add "All Sectors" as the first option
+                    sector_options = ["All Sectors"] + available_sectors
+                    
+                    # Initialize selected sector in session state
+                    if 'selected_sector' not in st.session_state:
+                        st.session_state.selected_sector = "All Sectors"
+                    
+                    # Use a different key approach to force refresh on reset
+                    selected_sector = st.sidebar.selectbox(
+                        "Filter by Sector",
+                        options=sector_options,
+                        index=sector_options.index(st.session_state.selected_sector) if st.session_state.selected_sector in sector_options else 0,
+                        key="sector_selectbox_" + str(st.session_state.get('filter_reset_counter', 0)),
+                        help="Select a specific sector to filter (All Sectors = show all)"
+                    )
+                    
+                    # Update session state when selection changes
+                    st.session_state.selected_sector = selected_sector
+                    
+                    # Convert to list format for filtering logic
+                    if selected_sector == "All Sectors":
+                        selected_sectors = []
+                    else:
+                        selected_sectors = [selected_sector]
+                else:
+                    st.sidebar.warning("⚠️ No sectors found. All symbols marked as 'Unknown'.")
+                    selected_sectors = []
             else:
-                profit_factor = float('inf') if gross_profit > 0 else 0.0
+                st.sidebar.info("ℹ️ Enable sector filter to fetch sector data.")
+                selected_sectors = []
+        else:
+            selected_sectors = []
+        
+        # Symbol Filter (independent) - Single Select
+        # Add "All Stocks" as the first option
+        symbol_options = ["All Stocks"] + all_available_symbols
+        
+        # Initialize selected symbol in session state
+        if 'selected_symbol' not in st.session_state:
+            st.session_state.selected_symbol = "All Stocks"
+        
+        # Reset button for all filters (symbol + sector)
+        if st.sidebar.button("🔄 Reset Filters", key="reset_filters_btn", use_container_width=True, help="Reset all filters (sector & symbol)"):
+            st.session_state.selected_symbol = "All Stocks"
+            st.session_state.selected_sector = "All Sectors"
+            # Increment counter to force widget refresh
+            if 'filter_reset_counter' not in st.session_state:
+                st.session_state.filter_reset_counter = 0
+            st.session_state.filter_reset_counter += 1
+            st.rerun()
+        
+        # Get the index for the current selection
+        try:
+            current_index = symbol_options.index(st.session_state.selected_symbol)
+        except ValueError:
+            current_index = 0
+            st.session_state.selected_symbol = "All Stocks"
+        
+        selected_symbol = st.sidebar.selectbox(
+            "Filter by Symbol",
+            options=symbol_options,
+            index=current_index,
+            key="symbol_selectbox",
+            help="Select a specific symbol to filter (All Stocks = show all)"
+        )
+        
+        # Update session state when selection changes
+        if selected_symbol != st.session_state.selected_symbol:
+            st.session_state.selected_symbol = selected_symbol
+        
+        # Convert to list format for filtering logic
+        if selected_symbol == "All Stocks":
+            selected_symbols = []
+        else:
+            selected_symbols = [selected_symbol]
+        
+        # Apply BOTH filters independently to the date-filtered data
+        # Start with date-filtered data
+        filtered_by_date = filtered_tradebook.copy()
+        filtered_pnl_by_date = df_pnl.copy()
+        
+        # Apply sector filter (if enabled and sector selected)
+        if enable_sector_filter and selected_sectors and 'sector_map' in st.session_state:
+            sector_map = st.session_state.sector_map
+            # selected_sectors is now a list with one sector or empty
+            symbols_in_selected_sectors = [sym for sym in all_available_symbols 
+                                          if sector_map.get(sym, 'Unknown') in selected_sectors]
+            filtered_by_date = filtered_by_date[filtered_by_date['Symbol'].isin(symbols_in_selected_sectors)]
+            filtered_pnl_by_date = filtered_pnl_by_date[filtered_pnl_by_date['Symbol'].isin(symbols_in_selected_sectors)]
+        
+        # Apply symbol filter (if symbols selected)
+        if selected_symbols:
+            # Filter by selected symbols
+            filtered_tradebook = filtered_by_date[filtered_by_date['Symbol'].isin(selected_symbols)]
+            filtered_pnl = filtered_pnl_by_date[filtered_pnl_by_date['Symbol'].isin(selected_symbols)].copy()
+        else:
+            # When no symbols selected (empty/reset state), show ALL stocks
+            # This ensures all stocks are displayed by default
+            filtered_tradebook = filtered_by_date.copy()
+            filtered_pnl = filtered_pnl_by_date.copy()
+        
+        # Show filter status - Active Filters Indicator
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("📌 Active Filters")
+        
+        active_filters = []
+        if start_date and end_date:
+            active_filters.append(f"📅 Date: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+        if enable_sector_filter and selected_sectors:
+            active_filters.append(f"🏢 Sector: {selected_sectors[0]}")
+        if selected_symbols:
+            active_filters.append(f"📊 Symbol: {selected_symbols[0]}")
+        
+        if active_filters:
+            for filter_text in active_filters:
+                st.sidebar.info(filter_text)
+            
+            # Show filtered data stats
+            unique_symbols_count = len(filtered_tradebook['Symbol'].unique()) if len(filtered_tradebook) > 0 else 0
+            st.sidebar.success(f"✓ {len(filtered_tradebook)} trades | {unique_symbols_count} symbols")
+        else:
+            st.sidebar.info("ℹ️ No filters active - showing all data")
+            unique_symbols_count = len(filtered_tradebook['Symbol'].unique()) if len(filtered_tradebook) > 0 else 0
+            st.sidebar.success(f"Total: {len(filtered_tradebook)} trades | {unique_symbols_count} symbols")
+    else:
+        filtered_tradebook = df_tradebook
+        filtered_pnl = df_pnl
+        start_date = None
+        end_date = None
+        selected_symbols = []
+    
+    # Export Section
+    st.sidebar.header("💾 Export Data")
+    
+    # Calculate metrics for filtered data
+    if filtered_tradebook is not None and filtered_pnl is not None:
+        # Check if dataframes are empty
+        has_tradebook_data = len(filtered_tradebook) > 0
+        has_pnl_data = len(filtered_pnl) > 0
+        
+        # Get daily P&L for filtered data
+        if has_pnl_data and has_tradebook_data:
+            daily_pnl = mc.get_daily_pnl_from_pnl_data(filtered_pnl, filtered_tradebook)
+        else:
+            daily_pnl = pd.DataFrame(columns=['Date', 'PnL'])
+        
+        if len(daily_pnl) == 0 and has_tradebook_data:
+            # Fallback to tradebook-based calculation
+            daily_pnl = mc.get_daily_pnl(filtered_tradebook)
+        
+        # Distribute charges pro-rata by daily turnover (proportional to filtered data)
+        if len(daily_pnl) > 0 and st.session_state.total_charges > 0:
+            # Calculate proportional charges based on filtered turnover vs total turnover
+            if df_tradebook is not None and len(df_tradebook) > 0:
+                # Calculate turnover for filtered data
+                filtered_turnover = mc.calculate_daily_turnover(filtered_tradebook)['Turnover'].sum() if len(filtered_tradebook) > 0 else 0
+                
+                # Calculate total turnover from all data
+                total_turnover_df = mc.calculate_daily_turnover(df_tradebook)
+                total_turnover = total_turnover_df['Turnover'].sum() if len(total_turnover_df) > 0 else 0
+                
+                # Proportional charges for filtered data
+                if total_turnover > 0:
+                    proportional_charges = st.session_state.total_charges * (filtered_turnover / total_turnover)
+                else:
+                    proportional_charges = 0
+            else:
+                proportional_charges = st.session_state.total_charges
+            
+            daily_pnl = mc.distribute_charges_pro_rata(
+                daily_pnl, 
+                filtered_tradebook, 
+                proportional_charges,
+                dp_charges_dict=None  # Can be enhanced to extract DP charge dates
+            )
+            
+            # Store charge info for display
+            st.session_state.filtered_charges = proportional_charges
+            st.session_state.charge_allocation_ratio = (filtered_turnover / total_turnover * 100) if total_turnover > 0 else 0
+        
+        # Calculate metrics (safely handle empty dataframes)
+        # Use FIFO-matched trades for consistent win rate and profit factor calculation
+        if has_tradebook_data:
+            # Get matched trades for win rate and profit factor calculation
+            matched_trades = mc.match_trades_with_pnl(filtered_tradebook)
+            if len(matched_trades) > 0:
+                wins = sum(1 for _, pnl, _ in matched_trades if pnl > 0)
+                win_rate = (wins / len(matched_trades)) * 100
+                
+                # Calculate profit factor from matched trades (not aggregated P&L)
+                winning_trades = [pnl for _, pnl, _ in matched_trades if pnl > 0]
+                losing_trades = [pnl for _, pnl, _ in matched_trades if pnl < 0]
+                
+                gross_profit = sum(winning_trades) if len(winning_trades) > 0 else 0
+                gross_loss = abs(sum(losing_trades)) if len(losing_trades) > 0 else 0
+                
+                if gross_loss > 0:
+                    profit_factor = gross_profit / gross_loss
+                else:
+                    profit_factor = float('inf') if gross_profit > 0 else 0.0
+            else:
+                win_rate = 0.0
+                profit_factor = 0.0
         else:
             win_rate = 0.0
             profit_factor = 0.0
+        
+        if has_tradebook_data:
+            avg_holding_period = mc.calculate_avg_holding_period(filtered_tradebook)
+        else:
+            avg_holding_period = 0.0
+        
+        cumulative_pnl = mc.get_cumulative_pnl(daily_pnl)
+        sharpe_ratio = mc.calculate_sharpe_ratio(daily_pnl)
+        max_drawdown = mc.calculate_max_drawdown(cumulative_pnl)
+        
+        # Export filtered tradebook (only if data exists)
+        if has_tradebook_data:
+            csv_tb = filtered_tradebook.to_csv(index=False)
+            date_str = f"{start_date}_{end_date}" if start_date and end_date else "all_data"
+            st.sidebar.download_button(
+                label="📥 Export Tradebook (CSV)",
+                data=csv_tb,
+                file_name=f"tradebook_filtered_{date_str}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.sidebar.info("No tradebook data to export")
+        
+        # Export filtered P&L (only if data exists)
+        if has_pnl_data:
+            csv_pnl = filtered_pnl.to_csv(index=False)
+            date_str = f"{start_date}_{end_date}" if start_date and end_date else "all_data"
+            st.sidebar.download_button(
+                label="📥 Export P&L (CSV)",
+                data=csv_pnl,
+                file_name=f"pnl_filtered_{date_str}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.sidebar.info("No P&L data to export")
     else:
+        st.sidebar.info("Upload files to enable export")
+        # Set default values for metrics to avoid NameError
         win_rate = 0.0
         profit_factor = 0.0
-    
-    if has_tradebook_data:
-        avg_holding_period = mc.calculate_avg_holding_period(filtered_tradebook)
-    else:
         avg_holding_period = 0.0
-    
-    cumulative_pnl = mc.get_cumulative_pnl(daily_pnl)
-    sharpe_ratio = mc.calculate_sharpe_ratio(daily_pnl)
-    max_drawdown = mc.calculate_max_drawdown(cumulative_pnl)
-    
-    # Export filtered tradebook (only if data exists)
-    if has_tradebook_data:
-        csv_tb = filtered_tradebook.to_csv(index=False)
-        date_str = f"{start_date}_{end_date}" if start_date and end_date else "all_data"
-        st.sidebar.download_button(
-            label="📥 Export Tradebook (CSV)",
-            data=csv_tb,
-            file_name=f"tradebook_filtered_{date_str}.csv",
-            mime="text/csv"
-        )
-    else:
-        st.sidebar.info("No tradebook data to export")
-    
-    # Export filtered P&L (only if data exists)
-    if has_pnl_data:
-        csv_pnl = filtered_pnl.to_csv(index=False)
-        date_str = f"{start_date}_{end_date}" if start_date and end_date else "all_data"
-        st.sidebar.download_button(
-            label="📥 Export P&L (CSV)",
-            data=csv_pnl,
-            file_name=f"pnl_filtered_{date_str}.csv",
-            mime="text/csv"
-        )
-    else:
-        st.sidebar.info("No P&L data to export")
+        sharpe_ratio = 0.0
+        max_drawdown = 0.0
+        daily_pnl = pd.DataFrame(columns=['Date', 'PnL'])
+        cumulative_pnl = pd.DataFrame(columns=['Date', 'Cumulative P&L'])
 else:
-    st.sidebar.info("Upload files to enable export")
-    # Set default values for metrics to avoid NameError
+    # Initialize default values when on MAE/MFE page to avoid NameError
+    enable_sector_filter = False
+    filtered_tradebook = df_tradebook if df_tradebook is not None else None
+    filtered_pnl = df_pnl if df_pnl is not None else None
+    start_date = None
+    end_date = None
+    selected_symbols = []
+    # Initialize metrics to avoid NameError (though they won't be used due to st.stop())
     win_rate = 0.0
     profit_factor = 0.0
     avg_holding_period = 0.0
