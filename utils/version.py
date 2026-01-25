@@ -10,11 +10,20 @@ from pathlib import Path
 APP_VERSION = "1.5.0"
 APP_NAME = "ZeroJournal"
 
+# Cache for deployment info to avoid repeated calls
+_deployment_info_cache = None
+
 def get_git_commit_hash() -> str:
     """
     Get the current git commit hash.
     Returns short hash or 'unknown' if git is not available.
     """
+    # Try to read from environment variable first (common in deployment platforms)
+    git_commit = os.environ.get('GIT_COMMIT') or os.environ.get('COMMIT_SHA') or os.environ.get('HEROKU_SLUG_COMMIT')
+    if git_commit:
+        return str(git_commit)[:7]
+    
+    # Try git command as fallback (may not work in all deployment environments)
     try:
         import subprocess
         result = subprocess.run(
@@ -22,15 +31,15 @@ def get_git_commit_hash() -> str:
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent,
-            timeout=2
+            timeout=2,
+            check=False
         )
-        if result.returncode == 0:
+        if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
-    except Exception:
+    except (Exception, FileNotFoundError, subprocess.TimeoutExpired):
         pass
     
-    # Try to read from environment variable (common in deployment platforms)
-    return os.environ.get('GIT_COMMIT', 'unknown')[:7] if os.environ.get('GIT_COMMIT') else 'unknown'
+    return 'unknown'
 
 def get_deployment_info() -> dict:
     """
@@ -39,25 +48,40 @@ def get_deployment_info() -> dict:
     Returns:
         dict with keys: version, commit_hash, deployment_date, environment
     """
-    commit_hash = get_git_commit_hash()
+    global _deployment_info_cache
+    if _deployment_info_cache is not None:
+        return _deployment_info_cache
     
-    # Try to get deployment date from environment or use current time
-    deployment_date = os.environ.get('DEPLOYMENT_DATE', datetime.now().strftime('%Y-%m-%d'))
+    try:
+        commit_hash = get_git_commit_hash()
+    except Exception:
+        commit_hash = 'unknown'
+    
+    try:
+        # Try to get deployment date from environment or use current time
+        deployment_date = os.environ.get('DEPLOYMENT_DATE', datetime.now().strftime('%Y-%m-%d'))
+    except Exception:
+        deployment_date = datetime.now().strftime('%Y-%m-%d')
     
     # Detect environment
     environment = 'production'
-    if os.environ.get('STREAMLIT_SERVER_ENVIRONMENT'):
-        environment = os.environ.get('STREAMLIT_SERVER_ENVIRONMENT', 'production')
-    elif os.environ.get('STREAMLIT_CLOUD'):
-        environment = 'streamlit-cloud'
+    try:
+        if os.environ.get('STREAMLIT_SERVER_ENVIRONMENT'):
+            environment = os.environ.get('STREAMLIT_SERVER_ENVIRONMENT', 'production')
+        elif os.environ.get('STREAMLIT_CLOUD'):
+            environment = 'streamlit-cloud'
+    except Exception:
+        pass
     
-    return {
+    _deployment_info_cache = {
         'version': APP_VERSION,
         'commit_hash': commit_hash,
         'deployment_date': deployment_date,
         'environment': environment,
         'app_name': APP_NAME
     }
+    
+    return _deployment_info_cache
 
 def get_version_string() -> str:
     """
@@ -66,8 +90,11 @@ def get_version_string() -> str:
     Returns:
         Formatted string like "v1.5.0 (abc1234)"
     """
-    info = get_deployment_info()
-    return f"v{info['version']} ({info['commit_hash']})"
+    try:
+        info = get_deployment_info()
+        return f"v{info.get('version', APP_VERSION)} ({info.get('commit_hash', 'unknown')})"
+    except Exception:
+        return f"v{APP_VERSION} (unknown)"
 
 def get_full_version_info() -> str:
     """

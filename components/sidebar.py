@@ -10,7 +10,16 @@ from services import sector_mapper
 from services import metrics_calculator as mc
 from utils.formatters import format_currency
 from utils.logger import logger
-from utils.version import get_deployment_info, get_version_string
+
+# Import version utilities with fallback
+try:
+    from utils.version import get_deployment_info, get_version_string
+except ImportError:
+    # Fallback if version module is not available
+    def get_deployment_info():
+        return {'version': '1.5.0', 'commit_hash': 'unknown', 'deployment_date': 'N/A', 'environment': 'production', 'app_name': 'ZeroJournal'}
+    def get_version_string():
+        return 'v1.5.0 (unknown)'
 
 
 def render_file_upload() -> Tuple[Optional[object], Optional[object]]:
@@ -504,23 +513,29 @@ def render_version_info() -> None:
     """
     Render version and deployment information in the sidebar footer.
     """
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📋 Version Info")
-    
     try:
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 📋 Version Info")
+        
         version_info = get_deployment_info()
         
         with st.sidebar.expander("ℹ️ Deployment Details", expanded=False):
             st.markdown(f"""
-            **Application:** {version_info['app_name']}  
-            **Version:** {version_info['version']}  
-            **Commit:** `{version_info['commit_hash']}`  
-            **Deployed:** {version_info['deployment_date']}  
-            **Environment:** {version_info['environment']}
+            **Application:** {version_info.get('app_name', 'ZeroJournal')}  
+            **Version:** {version_info.get('version', '1.5.0')}  
+            **Commit:** `{version_info.get('commit_hash', 'unknown')}`  
+            **Deployed:** {version_info.get('deployment_date', 'N/A')}  
+            **Environment:** {version_info.get('environment', 'production')}
             """)
         
         # Compact version display
-        st.sidebar.caption(f"Version {get_version_string()}")
+        version_str = get_version_string()
+        st.sidebar.caption(f"Version {version_str}")
     except Exception as e:
+        # Silently fail - don't break the app if version info fails
         logger.error(f"Error displaying version info: {e}")
-        st.sidebar.caption("Version 1.5.0")
+        try:
+            st.sidebar.markdown("---")
+            st.sidebar.caption("Version 1.5.0")
+        except Exception:
+            pass  # If even this fails, just skip version display
