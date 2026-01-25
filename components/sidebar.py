@@ -10,6 +10,7 @@ from services import sector_mapper
 from services import metrics_calculator as mc
 from utils.formatters import format_currency
 from utils.logger import logger
+from utils.version import get_deployment_info, get_version_string
 
 
 def render_file_upload() -> Tuple[Optional[object], Optional[object]]:
@@ -497,3 +498,29 @@ def render_export_section(
         st.sidebar.info("Upload files to enable export")
         # Set default values for metrics to avoid NameError
         return 0.0, 0.0, 0.0, 0.0, 0.0, pd.DataFrame(columns=['Date', 'PnL']), pd.DataFrame(columns=['Date', 'Cumulative P&L'])
+
+
+def render_version_info() -> None:
+    """
+    Render version and deployment information in the sidebar footer.
+    """
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📋 Version Info")
+    
+    try:
+        version_info = get_deployment_info()
+        
+        with st.sidebar.expander("ℹ️ Deployment Details", expanded=False):
+            st.markdown(f"""
+            **Application:** {version_info['app_name']}  
+            **Version:** {version_info['version']}  
+            **Commit:** `{version_info['commit_hash']}`  
+            **Deployed:** {version_info['deployment_date']}  
+            **Environment:** {version_info['environment']}
+            """)
+        
+        # Compact version display
+        st.sidebar.caption(f"Version {get_version_string()}")
+    except Exception as e:
+        logger.error(f"Error displaying version info: {e}")
+        st.sidebar.caption("Version 1.5.0")

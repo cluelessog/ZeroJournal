@@ -18,7 +18,8 @@ from components.sidebar import (
     render_navigation_buttons,
     render_portfolio_settings,
     render_filters,
-    render_export_section
+    render_export_section,
+    render_version_info
 )
 
 # Import page modules
@@ -622,6 +623,9 @@ else:
     max_drawdown = 0.0
     daily_pnl = pd.DataFrame(columns=['Date', 'PnL'])
     cumulative_pnl = pd.DataFrame(columns=['Date', 'Cumulative P&L'])
+
+# Display version info in sidebar (always shown)
+render_version_info()
 
 # Store filtered data in session state BEFORE any page navigation
 if filtered_tradebook is not None and filtered_pnl is not None:
