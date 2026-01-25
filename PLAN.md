@@ -1,8 +1,8 @@
 # ZeroJournal - Trading Dashboard Implementation Plan
 
-**Version:** 1.4.0  
+**Version:** 1.5.0  
 **Status:** ✅ ALL FEATURES COMPLETE  
-**Last Updated:** January 18, 2026
+**Last Updated:** January 25, 2026
 
 ---
 
@@ -22,12 +22,26 @@ Build a Streamlit-based trading dashboard with interactive charts and advanced a
 ## Project Structure
 ```
 ZeroJournal/
-├── services/
+├── components/                   # UI components (modular design)
 │   ├── __init__.py
-│   ├── excel_reader.py          # Parse tradebook and P&L Excel files
-│   ├── metrics_calculator.py    # Calculate swing trading metrics
-│   └── sector_mapper.py          # Real-time sector mapping via yfinance
-├── app.py                        # Main Streamlit application
+│   ├── sidebar.py                # Sidebar with upload, filters, export
+│   ├── charts.py                 # Chart rendering components
+│   ├── metrics.py                # Metrics display components
+│   └── navigation.py             # Navigation bar component
+├── pages/                        # Page modules
+│   ├── __init__.py
+│   ├── dashboard.py              # Main dashboard page
+│   └── mae_mfe_page.py           # MAE/MFE analysis page
+├── services/                     # Business logic services
+│   ├── __init__.py
+│   ├── excel_reader.py           # Excel file parsing & validation
+│   ├── metrics_calculator.py     # Trading metrics calculations
+│   └── sector_mapper.py           # Real-time sector mapping (yfinance)
+├── utils/                        # Utility functions
+│   ├── __init__.py
+│   ├── logger.py                 # Centralized logging
+│   └── formatters.py             # Currency/percentage formatters
+├── app.py                        # Main Streamlit application (router)
 ├── config.py                     # Configuration (constants, validation rules)
 ├── requirements.txt              # Python dependencies
 ├── README.md                     # User documentation
@@ -48,7 +62,7 @@ ZeroJournal/
 - Column validation lists
   - TRADEBOOK_REQUIRED_COLUMNS
   - PNL_REQUIRED_COLUMNS
-- Supported file formats: ['.xlsx', '.xls']
+- Supported file formats: ['.xlsx'] (Note: .xls support removed due to xlrd compatibility issues)
 - Risk-free rate for Sharpe ratio: 0.0%
 
 ---
@@ -75,7 +89,7 @@ ZeroJournal/
   - Returns: float (total charges amount)
 
 **Data Validation:** ✅
-- File format verification (.xlsx, .xls)
+- File format verification (.xlsx only)
 - Required columns existence check
 - Date parsing with error handling
 - Numeric field validation
@@ -162,18 +176,25 @@ ZeroJournal/
 **Status: COMPLETE** (NEW in v1.3.0)
 
 **Functions:**
-- `fetch_sector_for_symbols(symbols)` ✅
-  - Fetches real-time sector data from yfinance
-  - Handles NSE/BSE ticker format conversion
+- `get_stock_sector(symbol)` ✅
+  - Fetches sector information for a single stock symbol
+  - Uses yfinance with .NS suffix for NSE stocks
+  - Returns: str (sector name or 'Unknown')
+  - Uses module-level cache to avoid repeated API calls
+  
+- `get_sectors_for_symbols(symbols, progress_callback)` ✅
+  - Fetches sector information for multiple symbols using parallel processing
+  - Falls back to sequential processing if parallel fails
+  - Supports progress callback for UI updates
   - Returns: dict {symbol: sector}
   
-- `get_cached_sectors()` ✅
-  - Retrieves previously cached sector mappings
-  - Session-based storage
+- `add_sector_to_dataframe(df, symbol_column)` ✅
+  - Adds sector column to a dataframe based on stock symbols
+  - Returns: DataFrame with added 'Sector' column
   
-- `add_manual_sector_mapping(symbol, sector)` ✅
-  - Allows manual sector override
-  - Useful if yfinance fails
+- `get_sector_summary(df, symbol_column)` ✅
+  - Gets summary of sectors present in the dataframe
+  - Returns: DataFrame with sector and count columns
 
 **Features:**
 - Automatic sector detection
@@ -254,7 +275,7 @@ Main Content:
 
 **1. File Upload System** ✅
 - Streamlit file uploaders for tradebook and P&L
-- Accepts .xlsx and .xls files
+- Accepts .xlsx files only
 - Session state storage
 - Clear file validation messages
 - File size display
@@ -599,7 +620,7 @@ tests/
 
 ## Conclusion
 
-**ZeroJournal v1.4.0 is feature-complete** and exceeds the original specification with:
+**ZeroJournal v1.5.0 is feature-complete** and exceeds the original specification with:
 - ✅ All planned features implemented
 - ✅ Additional advanced metrics
 - ✅ Performance trends analysis
@@ -613,6 +634,7 @@ tests/
 ---
 
 **Implementation Completed:** January 18, 2026  
+**Last Updated:** January 25, 2026  
 **Next Review:** Quarterly or upon major feature addition  
 **Maintainer:** Development Team  
-**Version:** 1.4.0
+**Version:** 1.5.0

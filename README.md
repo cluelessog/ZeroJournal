@@ -1,6 +1,6 @@
 # ZeroJournal - Trading Dashboard for Swing Traders
 
-**Version 1.4.0** | A comprehensive trading analytics dashboard built with Streamlit for analyzing swing trading performance.
+**Version 1.5.0** | A comprehensive trading analytics dashboard built with Streamlit for analyzing swing trading performance.
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.28%2B-FF4B4B)](https://streamlit.io/)
@@ -130,12 +130,12 @@ Upload your Zerodha tradebook and P&L Excel files to get detailed insights into 
 The dashboard expects Zerodha Excel export files with the following structure:
 
 ### Tradebook File
-- **Format**: Excel (.xlsx or .xls)
+- **Format**: Excel (.xlsx only)
 - **Headers at row 14** (0-indexed)
 - **Required columns**: Symbol, ISIN, Trade Date, Exchange, Segment, Series, Trade Type, Auction, Quantity, Price, Trade ID, Order ID, Order Execution Time
 
 ### P&L Statement File
-- **Format**: Excel (.xlsx or .xls)
+- **Format**: Excel (.xlsx only)
 - **Headers at row 37** (0-indexed)
 - **Required columns**: Symbol, ISIN, Quantity, Buy Value, Sell Value, Realized P&L, Realized P&L Pct.
 
@@ -145,14 +145,28 @@ The dashboard expects Zerodha Excel export files with the following structure:
 
 ```
 ZeroJournal/
-├── services/
+├── components/                   # UI components (modular design)
 │   ├── __init__.py
-│   ├── excel_reader.py          # Excel file parsing & validation
-│   ├── metrics_calculator.py    # Trading metrics calculations
-│   └── sector_mapper.py          # Real-time sector mapping (yfinance)
-├── app.py                        # Main Streamlit application
+│   ├── sidebar.py                # Sidebar with upload, filters, export
+│   ├── charts.py                 # Chart rendering components
+│   ├── metrics.py                # Metrics display components
+│   └── navigation.py             # Navigation bar component
+├── pages/                        # Page modules
+│   ├── __init__.py
+│   ├── dashboard.py              # Main dashboard page
+│   └── mae_mfe_page.py           # MAE/MFE analysis page
+├── services/                    # Business logic services
+│   ├── __init__.py
+│   ├── excel_reader.py           # Excel file parsing & validation
+│   ├── metrics_calculator.py     # Trading metrics calculations
+│   └── sector_mapper.py           # Real-time sector mapping (yfinance)
+├── utils/                        # Utility functions
+│   ├── __init__.py
+│   ├── logger.py                 # Centralized logging
+│   └── formatters.py             # Currency/percentage formatters
+├── app.py                        # Main Streamlit application (router)
 ├── config.py                     # Configuration constants
-├── requirements.txt              # Python dependencies
+├── requirements.txt             # Python dependencies
 ├── README.md                     # This file
 ├── PLAN.md                       # Implementation plan & architecture
 └── PROJECT_REVIEW.md             # Comprehensive code review & QA
@@ -269,7 +283,7 @@ The dashboard is designed for multi-user deployment:
 1. **File Upload Errors**
    - Ensure files are in correct Zerodha format
    - Check that both files are uploaded
-   - Verify file extensions are `.xlsx` or `.xls`
+   - Verify file extensions are `.xlsx`
    - Look for specific error messages in the app
 
 2. **No Data Showing**
@@ -285,7 +299,7 @@ The dashboard is designed for multi-user deployment:
    - Check for error messages if yfinance fails
 
 4. **Charts Look Compressed**
-   - This has been fixed in v1.4.0
+   - This has been fixed in v1.5.0
    - Charts now auto-adjust y-axis ranges
    - Extreme values are capped for visibility
    - Hover to see actual values
@@ -297,6 +311,11 @@ The dashboard is designed for multi-user deployment:
      - Windows: `venv\Scripts\activate`
      - Mac/Linux: `source venv/bin/activate`
    - Then install: `pip install -r requirements.txt`
+
+6. **External API Dependencies**
+   - **yfinance**: Used for sector mapping (optional feature). Requires internet connection.
+   - **openchart**: Used for NSE historical data in MAE/MFE analysis. Requires internet connection.
+   - If APIs are unavailable, sector mapping will show "Unknown" and MAE/MFE analysis may fail.
 
 ---
 
@@ -394,6 +413,7 @@ This project is open source and available under the MIT License. Free for person
 - **Plotly** - For beautiful interactive charts
 - **Zerodha** - For standardized export formats
 - **yfinance** - For real-time sector data
+- **openchart** - For NSE historical data (MAE/MFE analysis)
 - **Trading Community** - For feedback and suggestions
 
 ---
@@ -419,7 +439,7 @@ For questions, suggestions, or collaboration:
 
 ## 📊 Statistics
 
-**Version:** 1.4.0  
+**Version:** 1.5.0  
 **Lines of Code:** ~4,000+  
 **Features:** 30+ metrics and visualizations  
 **Dependencies:** 7 production-ready libraries  

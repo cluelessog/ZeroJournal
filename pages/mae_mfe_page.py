@@ -1,7 +1,6 @@
 """
 MAE/MFE Analysis Page Module
-This is not in the pages/ folder to avoid auto-discovery
-It will be conditionally loaded via st.Page()
+Located in pages/ directory as part of the modular design
 """
 
 import streamlit as st
@@ -10,10 +9,12 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 from services import metrics_calculator as mc
+from utils.logger import logger
+import config
 
 # Cached function for fetching historical data (Optimization 1: Aggressive Caching)
 # Normalize dates to ensure consistent cache keys across environments
-@st.cache_data(ttl=1800, show_spinner=False)  # Cache for 30 minutes
+@st.cache_data(ttl=config.CACHE_TTL_SECONDS, show_spinner=False)  # Cache for 30 minutes
 def fetch_historical_data_cached(symbol, start_date, end_date, interval, segment='EQ'):
     """
     Cached wrapper for fetching historical data from openchart.
@@ -79,7 +80,7 @@ def fetch_historical_data_cached(symbol, start_date, end_date, interval, segment
         else:
             return pd.DataFrame()
     except Exception as e:
-        print(f"Error in cached fetch for {symbol}: {e}")
+        logger.error(f"Error in cached fetch for {symbol}: {e}")
         return pd.DataFrame()
 
 def show():
@@ -312,13 +313,13 @@ def show():
             st.metric("Exit Efficiency", f"{avg_efficiency:.1f}%")
         
         with col4:
-            optimal_stop = mae_mfe_df['MAE %'].quantile(0.75)
+            optimal_stop = mae_mfe_df['MAE %'].quantile(config.QUANTILE_75TH)
             st.metric("Optimal Stop Loss", f"{optimal_stop:.2f}%")
         
         st.markdown("---")
         
         # Calculate metrics for enhanced visualization
-        mae_75th = mae_mfe_df['MAE %'].quantile(0.75)
+        mae_75th = mae_mfe_df['MAE %'].quantile(config.QUANTILE_75TH)
         mfe_median = mae_mfe_df['MFE %'].median()
         mae_mfe_df['P&L Magnitude'] = abs(mae_mfe_df['Exit P&L %'])
         
@@ -512,7 +513,7 @@ def show():
         st.plotly_chart(fig, use_container_width=True)
         
         # Add summary statistics below the chart
-        st.markdown("#### 📈 Trade Quality Summary")
+        st.markdown("#### 📊 Trade Quality Summary")
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -549,7 +550,7 @@ def show():
         
         # Additional Analysis Charts
         st.markdown("---")
-        st.markdown("### 📈 Additional Analysis")
+        st.markdown("### 📊 Additional Analysis")
         
         # Create tabs for different views
         tab1, tab2, tab3 = st.tabs(["Distribution Analysis", "Efficiency Analysis", "Trade Patterns"])

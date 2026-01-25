@@ -4,10 +4,11 @@ Excel Reader Service - Parses tradebook and P&L Excel files
 
 import pandas as pd
 from io import BytesIO
+from typing import Tuple, Optional, Dict
 import config
 
 
-def read_tradebook(file):
+def read_tradebook(file: BytesIO) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
     """
     Parse tradebook Excel file from uploaded file object.
     
@@ -58,7 +59,7 @@ def read_tradebook(file):
         return None, f"Error reading tradebook file: {str(e)}"
 
 
-def read_pnl(file):
+def read_pnl(file: BytesIO) -> Tuple[Optional[pd.DataFrame], Optional[str], float]:
     """
     Parse P&L Excel file from uploaded file object.
     
@@ -106,7 +107,7 @@ def read_pnl(file):
         return None, f"Error reading P&L file: {str(e)}", 0.0
 
 
-def extract_charges(file):
+def extract_charges(file: BytesIO) -> Tuple[float, Dict[str, float]]:
     """
     Extract charges from P&L Excel file.
     Separates brokerage/taxes (pro-rata allocation) from DP charges (date-specific).

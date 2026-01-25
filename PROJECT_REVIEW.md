@@ -1,6 +1,6 @@
 # ZeroJournal - Comprehensive Project Review
-**Version:** 1.4.0  
-**Review Date:** January 18, 2026  
+**Version:** 1.5.0  
+**Review Date:** January 25, 2026  
 **Status:** Production Ready ✅
 
 ---
@@ -191,11 +191,15 @@ ZeroJournal is a production-ready trading analytics dashboard for swing traders.
    - Error boundaries
 
 ### ⚠️ Considerations
-1. **yfinance API Calls**
-   - External API for sector mapping
-   - Minimal data exposure (just ticker symbols)
-   - Non-critical feature (app works without it)
-   - Could be replaced with local CSV mapping
+1. **External API Dependencies**
+   - **yfinance API**: Used for sector mapping (optional feature)
+     - Minimal data exposure (just ticker symbols)
+     - Non-critical feature (app works without it)
+     - Could be replaced with local CSV mapping
+   - **openchart/NSE API**: Used for MAE/MFE analysis (required for that feature)
+     - Fetches historical OHLC data for trade analysis
+     - Requires internet connection
+     - MAE/MFE page will not function without this API
 
 ---
 
@@ -302,13 +306,15 @@ pandas>=2.0.0             # Data processing - STABLE
 numpy>=1.24.0             # Numerical ops - STABLE
 plotly>=5.17.0            # Charts - STABLE
 openpyxl>=3.1.0           # Excel reading - STABLE
+openchart>=0.2.0          # NSE historical data for MAE/MFE - STABLE
 yfinance>=0.2.0           # Sector mapping - STABLE
-streamlit-elements>=0.1.0 # Material UI - STABLE
+streamlit-elements>=0.1.0  # Material UI - STABLE
 ```
 
 ### Dependency Risks
 - **Low Risk:** All mature, well-maintained libraries
-- **yfinance:** External API dependency (optional feature)
+- **yfinance:** External API dependency (optional feature for sector mapping)
+- **openchart:** External API dependency (required for MAE/MFE analysis)
 - **streamlit-elements:** Less commonly used (only for Material UI grid)
 
 ### Recommendations
@@ -485,7 +491,7 @@ streamlit-elements>=0.1.0 # Material UI - STABLE
 
 ### Production Readiness: **APPROVED** ✅
 
-**ZeroJournal v1.4.0 is production-ready** for deployment on Streamlit Cloud or any Python hosting environment.
+**ZeroJournal v1.5.0 is production-ready** for deployment on Streamlit Cloud or any Python hosting environment.
 
 ### Strengths Summary
 - ✅ Feature-complete per specification

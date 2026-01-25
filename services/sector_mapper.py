@@ -5,13 +5,15 @@ Sector Mapper Service - Fetches sector information for stock symbols
 import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Callable
+from utils.logger import logger
 
 
 # Cache for sector information to avoid repeated API calls
 _sector_cache = {}
 
 
-def get_stock_sector(symbol):
+def get_stock_sector(symbol: str) -> str:
     """
     Fetch sector information for a stock symbol.
     
@@ -43,12 +45,15 @@ def get_stock_sector(symbol):
         return sector
         
     except Exception as e:
-        print(f"Error fetching sector for {symbol}: {str(e)}")
+        logger.error(f"Error fetching sector for {symbol}: {str(e)}")
         _sector_cache[symbol] = 'Unknown'
         return 'Unknown'
 
 
-def get_sectors_for_symbols(symbols, progress_callback=None):
+def get_sectors_for_symbols(
+    symbols: List[str], 
+    progress_callback: Optional[Callable[[int, int], None]] = None
+) -> Dict[str, str]:
     """
     Fetch sector information for multiple symbols using parallel processing.
     Falls back to sequential processing if parallel processing fails.
@@ -75,8 +80,9 @@ def get_sectors_for_symbols(symbols, progress_callback=None):
             sector = get_stock_sector(symbol)
             return (symbol, sector)
         
-        # Use parallel processing with max 10 workers
-        max_workers = min(10, len(symbols))
+        # Use parallel processing with max workers from config
+        from config import THREAD_POOL_MAX_WORKERS
+        max_workers = min(THREAD_POOL_MAX_WORKERS, len(symbols))
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all tasks
@@ -91,7 +97,7 @@ def get_sectors_for_symbols(symbols, progress_callback=None):
                     # If individual fetch fails, mark as Unknown
                     symbol = future_to_symbol.get(future, 'UNKNOWN')
                     sector_map[symbol] = 'Unknown'
-                    print(f"Error fetching sector for {symbol}: {str(e)}")
+                    logger.error(f"Error fetching sector for {symbol}: {str(e)}")
                 
                 # Update progress with thread safety
                 with lock:
@@ -103,7 +109,7 @@ def get_sectors_for_symbols(symbols, progress_callback=None):
         
     except Exception as e:
         # Fallback to sequential processing if parallel fails
-        print(f"Parallel processing failed, falling back to sequential: {str(e)}")
+        logger.warning(f"Parallel processing failed, falling back to sequential: {str(e)}")
         sector_map = {}
         total = len(symbols)
         

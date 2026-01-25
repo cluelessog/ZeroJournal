@@ -5,12 +5,23 @@ Metrics Calculator Service - Calculates swing trading metrics
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from typing import Optional, List, Tuple, Dict, Callable, Any, Union
 import config
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from utils.logger import logger
+
+# Import config constants
+ROLLING_WINDOW_SIZE = config.ROLLING_WINDOW_SIZE
+THREAD_POOL_MAX_WORKERS = config.THREAD_POOL_MAX_WORKERS
+PROGRESS_INIT = config.PROGRESS_INIT
+PROGRESS_MATCHING = config.PROGRESS_MATCHING
+PROGRESS_PREPARE = config.PROGRESS_PREPARE
+PROGRESS_FETCH_START = config.PROGRESS_FETCH_START
+PROGRESS_FETCH_RANGE = config.PROGRESS_FETCH_RANGE
 
 
-def calculate_win_rate(pnl_data):
+def calculate_win_rate(pnl_data: pd.DataFrame) -> float:
     """
     Calculate win rate (% of profitable trades/stocks).
     
@@ -32,7 +43,7 @@ def calculate_win_rate(pnl_data):
     return (profitable / total) * 100
 
 
-def calculate_profit_factor(pnl_data):
+def calculate_profit_factor(pnl_data: pd.DataFrame) -> float:
     """
     Calculate profit factor (gross profit / gross loss).
     
@@ -54,7 +65,7 @@ def calculate_profit_factor(pnl_data):
     return gross_profit / gross_loss
 
 
-def match_buy_sell_trades(trades):
+def match_buy_sell_trades(trades: pd.DataFrame) -> List[Tuple[int, float]]:
     """
     Match buy and sell trades to calculate holding periods.
     Uses FIFO (First In First Out) matching and considers execution time.
@@ -139,7 +150,7 @@ def match_buy_sell_trades(trades):
     return holding_periods
 
 
-def calculate_avg_holding_period(trades):
+def calculate_avg_holding_period(trades: pd.DataFrame) -> float:
     """
     Calculate average holding period in days (weighted by quantity).
     
@@ -167,7 +178,7 @@ def calculate_avg_holding_period(trades):
     return total_days / total_quantity
 
 
-def get_daily_pnl(trades):
+def get_daily_pnl(trades: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate daily P&L by aggregating trades by date.
     
@@ -218,7 +229,7 @@ def get_daily_pnl(trades):
     return pd.DataFrame(daily_pnl).sort_values('Date')
 
 
-def get_daily_pnl_from_pnl_data(pnl_data, trades):
+def get_daily_pnl_from_pnl_data(pnl_data: pd.DataFrame, trades: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate daily P&L by matching individual buy and sell trades per day.
     Uses FIFO matching to calculate actual realized P&L per day.
@@ -309,7 +320,7 @@ def get_daily_pnl_from_pnl_data(pnl_data, trades):
     return pd.DataFrame(daily_pnl_list).sort_values('Date')
 
 
-def get_weekly_pnl(daily_pnl):
+def get_weekly_pnl(daily_pnl: pd.DataFrame) -> pd.DataFrame:
     """
     Aggregate daily P&L to weekly.
     
@@ -331,7 +342,7 @@ def get_weekly_pnl(daily_pnl):
     return weekly_pnl
 
 
-def get_monthly_pnl(daily_pnl):
+def get_monthly_pnl(daily_pnl: pd.DataFrame) -> pd.DataFrame:
     """
     Aggregate daily P&L to monthly.
     
@@ -353,7 +364,7 @@ def get_monthly_pnl(daily_pnl):
     return monthly_pnl
 
 
-def get_cumulative_pnl(daily_pnl):
+def get_cumulative_pnl(daily_pnl: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate cumulative P&L over time.
     
@@ -372,7 +383,7 @@ def get_cumulative_pnl(daily_pnl):
     return cumulative[['Date', 'Cumulative P&L']]
 
 
-def calculate_daily_turnover(trades):
+def calculate_daily_turnover(trades: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate daily turnover (buy value + sell value per day).
     
@@ -409,7 +420,7 @@ def calculate_daily_turnover(trades):
     return pd.DataFrame(daily_turnover_list).sort_values('Date')
 
 
-def distribute_charges_pro_rata(daily_pnl, trades, total_charges, dp_charges_dict=None):
+def distribute_charges_pro_rata(daily_pnl: pd.DataFrame, trades: pd.DataFrame, total_charges: float, dp_charges_dict: Optional[Dict[Union[str, datetime], float]] = None) -> pd.DataFrame:
     """
     Distribute charges pro-rata by daily turnover.
     - Brokerage + taxes: allocated proportionally to daily turnover
@@ -465,7 +476,7 @@ def distribute_charges_pro_rata(daily_pnl, trades, total_charges, dp_charges_dic
     return daily_pnl[['Date', 'PnL']]
 
 
-def distribute_charges_evenly(daily_pnl, total_charges):
+def distribute_charges_evenly(daily_pnl: pd.DataFrame, total_charges: float) -> pd.DataFrame:
     """
     Distribute total charges evenly across all trading days (legacy method).
     Use distribute_charges_pro_rata for more accurate allocation.
@@ -493,7 +504,7 @@ def distribute_charges_evenly(daily_pnl, total_charges):
     return daily_pnl
 
 
-def get_equity_curve(daily_pnl, initial_value=0):
+def get_equity_curve(daily_pnl: pd.DataFrame, initial_value: float = 0) -> pd.DataFrame:
     """
     Calculate equity curve (portfolio value over time).
     
@@ -513,7 +524,7 @@ def get_equity_curve(daily_pnl, initial_value=0):
     return equity[['Date', 'Equity']]
 
 
-def calculate_sharpe_ratio(daily_pnl, risk_free_rate=None):
+def calculate_sharpe_ratio(daily_pnl: pd.DataFrame, risk_free_rate: Optional[float] = None) -> float:
     """
     Calculate Sharpe ratio (risk-adjusted return).
     
@@ -553,7 +564,7 @@ def calculate_sharpe_ratio(daily_pnl, risk_free_rate=None):
     return sharpe
 
 
-def calculate_max_drawdown(cumulative_pnl):
+def calculate_max_drawdown(cumulative_pnl: pd.DataFrame) -> float:
     """
     Calculate maximum drawdown (peak-to-trough decline).
     
@@ -578,7 +589,7 @@ def calculate_max_drawdown(cumulative_pnl):
     return max_drawdown
 
 
-def get_win_rate_by_symbol(pnl_data, trades=None):
+def get_win_rate_by_symbol(pnl_data: pd.DataFrame, trades: Optional[pd.DataFrame] = None) -> pd.DataFrame:
     """
     Calculate win rate for each symbol based on individual trades.
     
@@ -676,7 +687,7 @@ def get_win_rate_by_symbol(pnl_data, trades=None):
     return win_rate[['Symbol', 'Win Rate %']].sort_values('Win Rate %', ascending=False)
 
 
-def get_avg_holding_period_by_stock(trades):
+def get_avg_holding_period_by_stock(trades: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate average holding period for each stock (weighted by quantity).
     
@@ -729,7 +740,7 @@ def get_avg_holding_period_by_stock(trades):
     return pd.DataFrame(holding_periods_by_stock).sort_values('Avg Holding Period (Days)', ascending=False)
 
 
-def get_trade_duration_distribution(trades):
+def get_trade_duration_distribution(trades: pd.DataFrame) -> List[int]:
     """
     Get distribution of trade durations for histogram.
     Returns list of days (one entry per trade match, not per quantity unit).
@@ -751,7 +762,7 @@ def get_trade_duration_distribution(trades):
     return distribution
 
 
-def match_trades_with_pnl(trades):
+def match_trades_with_pnl(trades: pd.DataFrame) -> List[Tuple[int, float, float]]:
     """
     Match buy and sell trades to calculate holding periods with P&L.
     Uses FIFO (First In First Out) matching.
@@ -839,7 +850,7 @@ def match_trades_with_pnl(trades):
     return trade_matches
 
 
-def calculate_holding_sentiment(trades):
+def calculate_holding_sentiment(trades: pd.DataFrame) -> Dict[str, Any]:
     """
     Analyze holding period vs profitability by trading style to generate insights.
     Categories: Intraday (0 days), BTST (1 day), Velocity (2-4 days), Swing (>4 days)
@@ -983,7 +994,7 @@ def calculate_holding_sentiment(trades):
     }
 
 
-def calculate_expectancy(trades):
+def calculate_expectancy(trades: pd.DataFrame) -> Dict[str, Dict[str, float]]:
     """
     Calculate expectancy (expected value per trade) for Intraday and Swing separately.
     Expectancy = (Win Rate × Avg Win) - (Loss Rate × Avg Loss)
@@ -1054,7 +1065,7 @@ def calculate_expectancy(trades):
     }
 
 
-def calculate_risk_reward_ratio(trades):
+def calculate_risk_reward_ratio(trades: pd.DataFrame) -> Dict[str, Dict[str, float]]:
     """
     Calculate Risk-Reward Ratio (Average Win / Average Loss) for Intraday and Swing separately.
     
@@ -1115,7 +1126,7 @@ def calculate_risk_reward_ratio(trades):
     }
 
 
-def calculate_consecutive_streaks(trades):
+def calculate_consecutive_streaks(trades: pd.DataFrame) -> Dict[str, Dict[str, Union[int, str]]]:
     """
     Calculate longest consecutive winning and losing streaks for Intraday and Swing separately.
     
@@ -1193,13 +1204,13 @@ def calculate_consecutive_streaks(trades):
     }
 
 
-def calculate_rolling_expectancy(trades, window=20):
+def calculate_rolling_expectancy(trades: pd.DataFrame, window: Optional[int] = None) -> pd.DataFrame:
     """
     Calculate rolling expectancy over time with a sliding window.
     
     Args:
         trades: DataFrame with tradebook data
-        window: Number of trades in rolling window (default 20)
+        window: Number of trades in rolling window (default from config.ROLLING_WINDOW_SIZE)
         
     Returns:
         DataFrame with columns: ['trade_number', 'date', 'expectancy_overall', 
@@ -1208,6 +1219,10 @@ def calculate_rolling_expectancy(trades, window=20):
     if trades is None or len(trades) == 0:
         return pd.DataFrame(columns=['trade_number', 'date', 'expectancy_overall', 
                                      'expectancy_intraday', 'expectancy_swing'])
+    
+    # Use default window from config if not provided
+    if window is None:
+        window = ROLLING_WINDOW_SIZE
     
     # Get matched trades with P&L and dates
     trade_matches = []
@@ -1347,7 +1362,7 @@ def calculate_rolling_expectancy(trades, window=20):
     return pd.DataFrame(rolling_data)
 
 
-def calculate_monthly_expectancy(trades):
+def calculate_monthly_expectancy(trades: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate expectancy grouped by month for Intraday and Swing separately.
     
@@ -1506,7 +1521,7 @@ def calculate_monthly_expectancy(trades):
     return result
 
 
-def calculate_cumulative_metrics(trades):
+def calculate_cumulative_metrics(trades: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate cumulative metrics as trades accumulate over time.
     Shows evolution of win rate, profit factor, risk-reward, and expectancy.
@@ -1565,7 +1580,7 @@ def calculate_cumulative_metrics(trades):
     return pd.DataFrame(cumulative_data)
 
 
-def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=None):
+def calculate_mae_mfe_for_trades(trades: pd.DataFrame, progress_callback: Optional[Callable[[int, str], None]] = None, fetch_function: Optional[Callable[[str, str, str, str], pd.DataFrame]] = None) -> pd.DataFrame:
     """
     Calculate MAE (Maximum Adverse Excursion) and MFE (Maximum Favorable Excursion) 
     for all completed trades using NSE historical data.
@@ -1594,11 +1609,11 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
     try:
         from openchart import NSEData
         if progress_callback:
-            progress_callback(5, "Initializing openchart...")
+            progress_callback(PROGRESS_INIT, "Initializing openchart...")
         openchart_nse = NSEData()
-        print("openchart initialized successfully")
+        logger.info("openchart initialized successfully")
     except Exception as e:
-        print(f"openchart not available: {e}")
+        logger.warning(f"openchart not available: {e}")
         return pd.DataFrame()
     
     # Helper function to fetch historical data (with caching support)
@@ -1633,7 +1648,8 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
                     hist_data = fetch_function(chart_symbol, start_date_normalized, end_date_normalized, interval)
                     if not hist_data.empty and 'Open' in hist_data.columns and 'High' in hist_data.columns:
                         return hist_data, chart_symbol
-                except:
+                except Exception as e:
+                    logger.debug(f"Failed to fetch {chart_symbol} with cached function: {e}")
                     continue
             return pd.DataFrame(), None
         else:
@@ -1657,13 +1673,14 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
                         hist_data.columns = [col.title() for col in hist_data.columns]
                         if 'Open' in hist_data.columns and 'High' in hist_data.columns:
                             return hist_data, chart_symbol
-                except:
+                except Exception as e:
+                    logger.debug(f"Failed to fetch {chart_symbol} with openchart: {e}")
                     continue
             return pd.DataFrame(), None
     
     # Step 1: Collect all trade pairs using FIFO matching
     if progress_callback:
-        progress_callback(10, "Matching buy-sell pairs...")
+        progress_callback(PROGRESS_MATCHING, "Matching buy-sell pairs...")
     
     trade_pairs = []  # List of (buy_trade, sell_trade, symbol) tuples
     # Sort symbols for deterministic processing order
@@ -1746,7 +1763,7 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
         return pd.DataFrame()
     
     if progress_callback:
-        progress_callback(15, f"Found {total_pairs} trade pairs. Preparing parallel fetch...")
+        progress_callback(PROGRESS_PREPARE, f"Found {total_pairs} trade pairs. Preparing parallel fetch...")
     
     # Step 2: Prepare fetch requests
     fetch_requests = []
@@ -1800,10 +1817,10 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
     completed_fetches = 0
     
     if progress_callback:
-        progress_callback(20, f"Fetching data for {total_pairs} trades in parallel...")
+        progress_callback(PROGRESS_FETCH_START, f"Fetching data for {total_pairs} trades in parallel...")
     
-    # Use ThreadPoolExecutor with max 10 workers (NSE can handle ~10 concurrent)
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    # Use ThreadPoolExecutor with max workers from config
+    with ThreadPoolExecutor(max_workers=THREAD_POOL_MAX_WORKERS) as executor:
         # Submit all fetch requests
         future_to_request = {
             executor.submit(fetch_single_request, req): req 
@@ -1818,13 +1835,16 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
             
             # Update progress
             if progress_callback and total_pairs > 0:
-                fetch_progress = 20 + int((completed_fetches / total_pairs) * 70)
+                fetch_progress = PROGRESS_FETCH_START + int((completed_fetches / total_pairs) * PROGRESS_FETCH_RANGE)
                 progress_callback(
                     fetch_progress, 
                     f"Fetched {completed_fetches}/{total_pairs} trades..."
                 )
             
             if not result['success']:
+                # Log failed fetches at debug level
+                if 'error' in result:
+                    logger.debug(f"Failed to fetch data for {request['symbol']}: {result.get('error', 'Unknown error')}")
                 continue
             
             hist_data = result['hist_data']
@@ -1909,20 +1929,20 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
                     'Data Source': 'openchart'
                 })
             except Exception as e:
-                print(f"Error processing {symbol} trade: {e}")
+                logger.error(f"Error processing {symbol} trade: {e}")
                 continue
     
     result_df = pd.DataFrame(mae_mfe_results)
     
-    # Debug: Print summary
+    # Debug: Log summary
     if len(result_df) == 0:
-        print(f"Warning: No MAE/MFE data calculated. Processed {len(trades)} trades.")
-        print(f"Unique symbols: {list(trades['Symbol'].unique()[:10])}")  # Show first 10 symbols
+        logger.warning(f"No MAE/MFE data calculated. Processed {len(trades)} trades.")
+        logger.debug(f"Unique symbols: {list(trades['Symbol'].unique()[:10])}")  # Show first 10 symbols
         
         # Count buy/sell pairs
         buy_count = len(trades[trades['Trade Type'].str.lower() == 'buy'])
         sell_count = len(trades[trades['Trade Type'].str.lower() == 'sell'])
-        print(f"Buy trades: {buy_count}, Sell trades: {sell_count}")
+        logger.debug(f"Buy trades: {buy_count}, Sell trades: {sell_count}")
         
         # Check if we have matched pairs
         matched_pairs = 0
@@ -1932,6 +1952,6 @@ def calculate_mae_mfe_for_trades(trades, progress_callback=None, fetch_function=
             buys = symbol_trades[symbol_trades['Trade Type'].str.lower() == 'buy']
             sells = symbol_trades[symbol_trades['Trade Type'].str.lower() == 'sell']
             matched_pairs += min(len(buys), len(sells))
-        print(f"Potential matched pairs: {matched_pairs}")
+        logger.debug(f"Potential matched pairs: {matched_pairs}")
     
     return result_df
