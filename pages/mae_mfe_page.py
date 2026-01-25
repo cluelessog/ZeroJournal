@@ -14,7 +14,9 @@ import config
 
 # Cached function for fetching historical data (Optimization 1: Aggressive Caching)
 # Normalize dates to ensure consistent cache keys across environments
-@st.cache_data(ttl=config.CACHE_TTL_SECONDS, show_spinner=False)  # Cache for 30 minutes
+# Use getattr with fallback to handle deployment environments where config might not be fully loaded
+CACHE_TTL = getattr(config, 'CACHE_TTL_SECONDS', 1800)  # Default to 30 minutes if not found
+@st.cache_data(ttl=CACHE_TTL, show_spinner=False)  # Cache for 30 minutes
 def fetch_historical_data_cached(symbol, start_date, end_date, interval, segment='EQ'):
     """
     Cached wrapper for fetching historical data from openchart.
