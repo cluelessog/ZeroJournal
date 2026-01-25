@@ -16,6 +16,7 @@ import config
 # Normalize dates to ensure consistent cache keys across environments
 # Use getattr with fallback to handle deployment environments where config might not be fully loaded
 CACHE_TTL = getattr(config, 'CACHE_TTL_SECONDS', 1800)  # Default to 30 minutes if not found
+QUANTILE_75TH = getattr(config, 'QUANTILE_75TH', 0.75)  # Default to 0.75 (75th percentile) if not found
 @st.cache_data(ttl=CACHE_TTL, show_spinner=False)  # Cache for 30 minutes
 def fetch_historical_data_cached(symbol, start_date, end_date, interval, segment='EQ'):
     """
@@ -315,13 +316,13 @@ def show():
             st.metric("Exit Efficiency", f"{avg_efficiency:.1f}%")
         
         with col4:
-            optimal_stop = mae_mfe_df['MAE %'].quantile(config.QUANTILE_75TH)
+            optimal_stop = mae_mfe_df['MAE %'].quantile(QUANTILE_75TH)
             st.metric("Optimal Stop Loss", f"{optimal_stop:.2f}%")
         
         st.markdown("---")
         
         # Calculate metrics for enhanced visualization
-        mae_75th = mae_mfe_df['MAE %'].quantile(config.QUANTILE_75TH)
+        mae_75th = mae_mfe_df['MAE %'].quantile(QUANTILE_75TH)
         mfe_median = mae_mfe_df['MFE %'].median()
         mae_mfe_df['P&L Magnitude'] = abs(mae_mfe_df['Exit P&L %'])
         
